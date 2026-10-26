@@ -265,6 +265,20 @@ var CFG = {
 };
 if (params.api) guardar('api', params.api);
 if (params.k) guardar('k', params.k);
+// esconde o endereço e a chave da barra do navegador (ficam guardados no tablet)
+if ((params.api || params.k) && !MODO_GAS && window.history && history.replaceState) {
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+}
+
+// tela cheia: some a barra do navegador (no primeiro toque, exigência do navegador)
+function telaCheia() {
+  var el = document.documentElement;
+  if (document.fullscreenElement || document.webkitFullscreenElement) return;
+  try {
+    var p = (el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' });
+    if (p && p.catch) p.catch(function () {});
+  } catch (e) {}
+}
 
 /* =========================================================
    UTIL
@@ -716,7 +730,7 @@ $('cfgOk').onclick = function () {
   guardar('api', CFG.api); guardar('k', CFG.k);
   $('config').classList.remove('on'); carregar();
 };
-document.addEventListener('pointerdown', function (e) { if (!e.target.closest('button, #config')) aoToque(); else ultimoMov = Date.now(); });
+document.addEventListener('pointerdown', function (e) { telaCheia(); if (!e.target.closest('button, #config')) aoToque(); else ultimoMov = Date.now(); });
 document.addEventListener('visibilitychange', function () { if (!document.hidden) carregar(); });
 window.addEventListener('resize', tamanho);
 if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = function () {};
