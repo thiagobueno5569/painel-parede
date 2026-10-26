@@ -396,7 +396,19 @@ const IGNORAR_FACULDADE = /boletim|newsletter|informativo|canva|alerta\s+de\s+se
 function original_(m) {
   const corpo = m.getPlainBody() || '';
   const base = { de: m.getFrom(), assunto: m.getSubject() || '', corpo: corpo, data: m.getDate() };
-  const mm = corpo.match(/-{3,}\s*(?:Forwarded message|Mensagem encaminhada)\s*-{3,}([\s\S]{0,800}?)\r?\n\s*\r?\n/i);
+  // cabeçalho posto pela Ponte UFSJ
+  const pt = corpo.match(/\[PONTE-UFSJ\]\s*De:\s*(.*?)\s*\|\s*Data:\s*(\S+)\s*\|\s*Assunto:\s*(.*)/);
+  if (pt) {
+    const dp = new Date(pt[2]);
+    return { de: pt[1], assunto: pt[3].trim(), corpo: corpo.slice(pt.index + pt[0].length), data: isNaN(dp) ? base.data : dp };
+  }
+  // encaminhado pela ponte antiga (sem cabeçalho): usa o "responder para", se houver
+  if (/aluno\.ufsj\.edu\.br/i.test(base.de)) {
+    const rt = m.getReplyTo && m.getReplyTo();
+    if (rt && rt !== base.de && !/aluno\.ufsj\.edu\.br/i.test(rt)) base.de = rt;
+    base.assunto = limparAssunto_(base.assunto);
+  }
+  const mm =corpo.match(/-{3,}\s*(?:Forwarded message|Mensagem encaminhada)\s*-{3,}([\s\S]{0,800}?)\r?\n\s*\r?\n/i);
   if (!mm) return base;
   const cab = mm[1];
   function pega(re) { const x = cab.match(re); return x ? x[1].trim() : ''; }
