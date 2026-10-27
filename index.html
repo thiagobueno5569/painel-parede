@@ -514,6 +514,11 @@ function api(acao, p) {
       return;
     }
     if (!CFG.api || !CFG.k) { $('config').classList.add('on'); return falha(new Error('sem configuração')); }
+    if (acao === 'voz') {   // texto longo: vai por POST
+      fetch(CFG.api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ k: CFG.k, acao: acao, p: p }) })
+        .then(function (r) { return r.json(); }).then(ok, falha);
+      return;
+    }
     var url = CFG.api + (CFG.api.indexOf('?') >= 0 ? '&' : '?') + 'formato=json&k=' + encodeURIComponent(CFG.k) +
       (acao ? '&acao=' + encodeURIComponent(acao) : '') + (p ? '&p=' + encodeURIComponent(JSON.stringify(p)) : '');
     fetch(url).then(function (r) { return r.json(); }).then(function (j) { if (j && j.erro) falha(new Error(j.erro)); else ok(j); }, falha);
@@ -815,7 +820,40 @@ function semVoz(motivo) {
   if (motivo === 'not-allowed') { $('tocar').classList.add('on'); status('toque na tela para liberar o som'); }
   else status('sem voz em português — Configurações › Conversão de texto em voz');
 }
+var audioAtual = null, cacheVoz = {}, naturalFalhouAte = 0, idFala = 0;
 function falar(texto) {
+  if (!texto) return;
+  if (dados && dados.vozNatural && Date.now() > naturalFalhouAte) falarNatural(texto);
+  else falarAparelho(texto);
+}
+function falarNatural(texto) {
+  parar();
+  $('tocar').classList.remove('on');
+  document.body.classList.add('falando');
+  var meu = ++idFala, desistiu = false;
+  var limite = setTimeout(function () { desistiu = true; if (meu === idFala) { naturalFalhouAte = Date.now() + 5 * 60000; falarAparelho(texto); } }, 30000);
+  var pegar = cacheVoz[texto] ? Promise.resolve(cacheVoz[texto]) : api('voz', { texto: texto });
+  pegar.then(function (r) {
+    clearTimeout(limite);
+    if (desistiu || meu !== idFala) return;
+    if (!r || !r.audio) { naturalFalhouAte = Date.now() + 10 * 60000; status('voz natural indisponível' + (r && r.erro ? ' (' + String(r.erro).slice(0, 60) + ')' : '')); falarAparelho(texto); return; }
+    if (texto.length < 400) cacheVoz[texto] = r;   // avisos curtos se repetem: guarda
+    var a = new Audio('data:' + (r.mime || 'audio/wav') + ';base64,' + r.audio);
+    audioAtual = a;
+    a.onended = function () { if (audioAtual === a) { audioAtual = null; fimFala(); } };
+    var p = a.play();
+    if (p && p.catch) p.catch(function (e) {
+      if (meu !== idFala) return;
+      if (e && e.name === 'NotAllowedError') { falaPendente = texto; semVoz('not-allowed'); }
+      else falarAparelho(texto);
+    });
+  }, function () {
+    clearTimeout(limite);
+    if (desistiu || meu !== idFala) return;
+    naturalFalhouAte = Date.now() + 5 * 60000; falarAparelho(texto);
+  });
+}
+function falarAparelho(texto) {
   if (!texto) return;
   parar();
   $('tocar').classList.remove('on');
@@ -846,6 +884,7 @@ function falar(texto) {
 }
 function parar() {
   fimFala();
+  if (audioAtual) { try { audioAtual.pause(); } catch (e) {} audioAtual = null; }
   try { if (typeof fully !== 'undefined' && fully.stopTextToSpeech) fully.stopTextToSpeech(); } catch (e) {}
   if (window.speechSynthesis) window.speechSynthesis.cancel();
 }
