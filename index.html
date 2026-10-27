@@ -591,7 +591,7 @@ function itensHoje() {
 }
 
 function renderAgenda() {
-  var tod = ((dados && dados.hoje) || []).filter(function (e) { return e.diaInteiro; });
+  var tod = ((dados && dados.hoje) || []).filter(function (e) { return e.diaInteiro && !e.tipo; });
   $('diaTodo').innerHTML = tod.map(function (e) { return '<span>' + esc(semEmoji(e.titulo)) + '</span>'; }).join('');
   var itens = itensHoje();
   $('agenda').innerHTML = itens.length ? itens.map(function (it, i) {
