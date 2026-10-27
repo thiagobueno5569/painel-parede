@@ -19,7 +19,9 @@ const CONFIG = {
   LON: -44.2617,
   HORA_ACORDAR: '07:00',        // a partir daqui: quadros + resumo falado quando você passar
   HORA_NOITE: '19:00',          // a partir daqui: modo noite (estrelas, lua e horário bem fraquinho)
-  DESLOCAMENTO_MIN: 20,         // quanto tempo antes da aula você precisa sair de casa
+  DESLOCAMENTO_MIN: 55,         // em geral você sai de casa ~55 min antes da aula
+  // aulas do começo da tarde: você sai antes (almoço no campus) — janela de saída fixa
+  SAIDA_TARDE: { aulasDe: '12:00', aulasAte: '14:00', sairDe: '11:20', sairAte: '11:30' },
   LEVAR: ['Caderno', 'Calculadora', 'Carregador', 'Garrafa de água', 'Chaves'],   // lembrete na hora de sair
 
   // ---------- AULAS (atestado de matrícula 2026.2) ----------
@@ -229,15 +231,15 @@ function aulasDoDia_(d, eventos) {
       lista.push({
         cod: a.cod, nome: a.nome, curto: a.curto, prof: a.prof, local: a.local, sala: a.sala, cor: a.cor,
         ini: msHora_(dia, h.ini), fim: msHora_(dia, h.fim), hIni: h.ini, hFim: h.fim,
-        saida: msHora_(dia, h.ini) - CONFIG.DESLOCAMENTO_MIN * 60000,
+        saida: saidaDe_(dia, h.ini), saidaAte: saidaAte_(dia, h.ini),
         alertaSaida: true, status: 'normal', nota: ''
       });
     });
   });
   lista.sort(function (x, y) { return x.ini - y.ini; });
-  // se a aula anterior terminou há menos de 1 h, você provavelmente ainda está no campus
+  // se a hora de sair cai durante (ou logo depois de) outra aula, você já está no campus
   for (let i = 1; i < lista.length; i++) {
-    if (lista[i].ini - lista[i - 1].fim < 3600000) lista[i].alertaSaida = false;
+    if (lista[i].saida < lista[i - 1].fim + 30 * 60000) lista[i].alertaSaida = false;
   }
   // feriados e avisos de "sem aula" vindos dos e-mails
   (eventos || []).forEach(function (e) {
@@ -261,13 +263,43 @@ function aulasDoDia_(d, eventos) {
   return lista;
 }
 
+function ehTarde_(hIni) {
+  const T = CONFIG.SAIDA_TARDE;
+  return !!T && hIni >= T.aulasDe && hIni <= T.aulasAte;
+}
+/** Hora de sair de casa para uma aula (ms) */
+function saidaDe_(dia, hIni) {
+  return ehTarde_(hIni) ? msHora_(dia, CONFIG.SAIDA_TARDE.sairDe) : msHora_(dia, hIni) - CONFIG.DESLOCAMENTO_MIN * 60000;
+}
+/** Fim da janela de saída (ms), ou null */
+function saidaAte_(dia, hIni) {
+  return ehTarde_(hIni) ? msHora_(dia, CONFIG.SAIDA_TARDE.sairAte) : null;
+}
+/** Minutos entre a hora de sair e o início da aula (para os lembretes do celular) */
+function antecedencia_(hIni) {
+  const d = new Date(2026, 0, 1);
+  return Math.round((msHora_(d, hIni) - saidaDe_(d, hIni)) / 60000);
+}
+
 /** Cria as aulas como eventos semanais na agenda "Faculdade" (aparecem no celular com lembrete). Pode rodar de novo sem duplicar. */
 function criarAulasNaAgenda() {
   const cal = agendaFaculdade_();
   const ini = dataIsoParaDate_(CONFIG.PERIODO.inicio), fim = dataIsoParaDate_(CONFIG.PERIODO.fim);
   const ate = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate() + 1);
   const existentes = {};
-  cal.getEvents(ini, ate).forEach(function (e) { const t = e.getTag('aula'); if (t) existentes[t] = true; });
+  let ajustados = 0;
+  cal.getEvents(ini, ate).forEach(function (e) {
+    const t = e.getTag('aula');
+    if (!t || existentes[t]) return;
+    existentes[t] = true;
+    // atualiza os lembretes das séries já criadas (ex.: mudou a hora de sair)
+    const hIni = t.split('-').pop(), min = antecedencia_(hIni);
+    try {
+      const s = e.getEventSeries();
+      s.removeAllReminders(); s.addPopupReminder(min + 15); s.addPopupReminder(min);
+      ajustados++;
+    } catch (err) { console.warn('lembrete: ' + err); }
+  });
   const W = [CalendarApp.Weekday.SUNDAY, CalendarApp.Weekday.MONDAY, CalendarApp.Weekday.TUESDAY, CalendarApp.Weekday.WEDNESDAY,
     CalendarApp.Weekday.THURSDAY, CalendarApp.Weekday.FRIDAY, CalendarApp.Weekday.SATURDAY];
   let n = 0;
@@ -282,13 +314,14 @@ function criarAulasNaAgenda() {
         CalendarApp.newRecurrence().addWeeklyRule().onlyOnWeekday(W[h.dia]).until(ate),
         { location: a.local, description: 'Prof. ' + a.prof + '\n' + a.cod + '\nCriado pelo Assistente de Parede.' });
       s.removeAllReminders();
-      s.addPopupReminder(CONFIG.DESLOCAMENTO_MIN + 15);
-      s.addPopupReminder(CONFIG.DESLOCAMENTO_MIN);
+      s.addPopupReminder(antecedencia_(h.ini) + 15);
+      s.addPopupReminder(antecedencia_(h.ini));
       s.setTag('aula', tag);
       n++;
     });
   });
-  Logger.log(n ? 'Criei ' + n + ' série(s) de aulas na agenda "' + cal.getName() + '".' : 'As aulas já estavam na agenda.');
+  Logger.log((n ? 'Criei ' + n + ' série(s) de aulas na agenda "' + cal.getName() + '". ' : 'As aulas já estavam na agenda. ') +
+    (ajustados ? 'Lembretes atualizados em ' + ajustados + ' série(s).' : ''));
 }
 
 function ehAula_(e) {
@@ -956,13 +989,15 @@ function mapaMes_() {
   const ini = new Date(h.getFullYear(), h.getMonth(), 1);
   const fim = new Date(h.getFullYear(), h.getMonth() + 1, 1);
   const mapa = {};
+  function dia(d) { const k = String(d.getDate()); return (mapa[k] = mapa[k] || { n: 0, tipos: [], itens: [] }); }
   eventosPeriodo_(ini, fim).forEach(function (e) {
     const d = new Date(e.inicio);
     if (d < ini || ehAula_(e)) return;
-    const k = String(d.getDate());
-    mapa[k] = mapa[k] || { n: 0, tipos: [] };
-    mapa[k].n++;
-    if (e.tipo && mapa[k].tipos.indexOf(e.tipo) < 0) mapa[k].tipos.push(e.tipo);
+    const m = dia(d), feriado = /feriado|holiday/i.test(e.agenda || '');
+    m.n++;
+    if (e.tipo && m.tipos.indexOf(e.tipo) < 0) m.tipos.push(e.tipo);
+    if (feriado && m.tipos.indexOf('feriado') < 0) m.tipos.push('feriado');
+    m.itens.push({ t: e.titulo.replace(/^[^\p{L}\p{N}]+/u, ''), h: e.diaInteiro ? '' : e.hora, tipo: feriado ? 'feriado' : (e.tipo || '') });
   });
   return { ano: h.getFullYear(), mes: h.getMonth(), dias: mapa };
 }
@@ -1115,7 +1150,7 @@ function montarFala_(r, agora) {
     valem.forEach(function (a, i) {
       let f = (valem.length === 1 ? 'É ' : i === 0 ? 'Primeiro, ' : i === valem.length - 1 ? 'Por último, ' : 'Depois, ') +
         a.nome + ' ' + asHora_(a.ini) + ', na ' + a.sala + '.';
-      if (a.alertaSaida && a.saida > t) f += ' Saia de casa ' + asHora_(a.saida) + '.';
+      if (a.alertaSaida && (a.saidaAte || a.saida) > t) f += ' Saia de casa ' + (a.saidaAte ? 'entre ' + horaFalada_(a.saida) + ' e ' + horaFalada_(a.saidaAte) : asHora_(a.saida)) + '.';
       if (a.status === 'aviso') f += ' Atenção: ' + a.nota + '.';
       p.push(f);
     });
@@ -1160,7 +1195,7 @@ function montarFala_(r, agora) {
   // 6. amanhã (à noite)
   if (h >= 17) {
     const am = (r.aulasAmanha || []).filter(function (a) { return a.status !== 'cancelada'; });
-    if (am.length) p.push('Amanhã a primeira aula é ' + am[0].nome + ' ' + asHora_(am[0].ini) + '; saia ' + asHora_(am[0].saida) + '.');
+    if (am.length) p.push('Amanhã a primeira aula é ' + am[0].nome + ' ' + asHora_(am[0].ini) + '; saia ' + (am[0].saidaAte ? 'entre ' + horaFalada_(am[0].saida) + ' e ' + horaFalada_(am[0].saidaAte) : asHora_(am[0].saida)) + '.');
     else p.push('Amanhã você não tem aula.');
   }
 
