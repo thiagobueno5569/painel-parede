@@ -197,6 +197,11 @@
   body.modo-painel .status { opacity: 1; }
 
   /* véu: escurece quando não dá pra controlar o brilho da tela */
+  #tocar { position: fixed; left: 50%; bottom: 12vh; transform: translateX(-50%); z-index: 7; display: none;
+    font: 400 1.8vw 'Outfit', sans-serif; color: var(--tinta); padding: 2vh 3vw; border-radius: 99px;
+    background: linear-gradient(135deg, rgba(127, 216, 255, .28), rgba(160, 130, 255, .24)); border: 1px solid rgba(127, 216, 255, .4);
+    box-shadow: 0 0 40px rgba(127, 216, 255, .25); animation: respira 2.4s ease-in-out infinite; }
+  #tocar.on { display: block; }
   #veu { position: fixed; inset: 0; z-index: 9; background: #000; pointer-events: none; opacity: 0; transition: opacity 1.6s ease; }
   #flash { position: fixed; inset: 0; z-index: 8; pointer-events: none; opacity: 0;
     background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .35), transparent 60%); }
@@ -264,6 +269,7 @@
 
 <div class="ticker"><div class="faixa" id="faixa"></div></div>
 <div class="status" id="status"></div>
+<button id="tocar">🔊&nbsp; Toque para ouvir o resumo</button>
 <div id="flash"></div>
 <div id="veu"></div>
 
@@ -482,23 +488,78 @@ function proximo() {
    VOZ
    ========================================================= */
 function temFully() { try { return typeof fully !== 'undefined' && !!fully.textToSpeech; } catch (e) { return false; } }
-function falar(texto) {
-  parar();
-  document.body.classList.add('falando');
-  if (temFully()) { fully.textToSpeech(texto, 'pt_BR'); setTimeout(function () { document.body.classList.remove('falando'); }, Math.min(90000, texto.length * 70)); return; }
-  var s = window.speechSynthesis; if (!s) return;
-  var vozes = s.getVoices();
-  var voz = vozes.filter(function (v) { return /pt[-_]BR/i.test(v.lang); })[0] || vozes.filter(function (v) { return /^pt/i.test(v.lang); })[0];
-  var frases = texto.match(/[^.!?]+[.!?]*/g) || [texto];
-  frases.forEach(function (f, i) {
-    var u = new SpeechSynthesisUtterance(f.trim());
-    u.lang = 'pt-BR'; if (voz) u.voice = voz; u.rate = 1.02;
-    if (i === frases.length - 1) u.onend = function () { document.body.classList.remove('falando'); };
-    s.speak(u);
-  });
+var falas = [];            // guarda as frases (no Chrome, se forem descartadas da memória, a fala some)
+var timerVoz = null, vozLiberada = false, falaPendente = null;
+
+function vozPt() {
+  var v = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
+  return v.filter(function (x) { return /pt[-_]BR/i.test(x.lang) && /google/i.test(x.name); })[0] ||
+         v.filter(function (x) { return /pt[-_]BR/i.test(x.lang); })[0] ||
+         v.filter(function (x) { return /^pt/i.test(x.lang); })[0] || null;
 }
+
+// o navegador só deixa falar depois de um toque na página: o primeiro toque "destrava" a voz
+function liberarVoz() {
+  if (vozLiberada || !window.speechSynthesis) return;
+  try { var u = new SpeechSynthesisUtterance(' '); u.volume = 0; u.lang = 'pt-BR'; speechSynthesis.speak(u); vozLiberada = true; } catch (e) {}
+}
+
+function fimFala() { document.body.classList.remove('falando'); clearTimeout(timerVoz); }
+
+function semVoz(motivo) {
+  fimFala();
+  if (motivo === 'not-allowed') {
+    $('tocar').classList.add('on');     // pede um toque para liberar o som
+    status('toque na tela para ouvir');
+  } else {
+    status('sem voz em português neste tablet — veja Configurações › Conversão de texto em voz');
+  }
+}
+
+function falar(texto) {
+  if (!texto) return;
+  parar();
+  $('tocar').classList.remove('on');
+  document.body.classList.add('falando');
+
+  // 1) Fully Kiosk (fala mesmo sem toque, ideal para o bom-dia automático)
+  if (temFully()) {
+    try { fully.textToSpeech(texto, 'pt_BR'); } catch (e) { try { fully.textToSpeech(texto); } catch (e2) {} }
+    timerVoz = setTimeout(fimFala, Math.min(120000, texto.length * 75));
+    return;
+  }
+
+  // 2) voz do navegador
+  var s = window.speechSynthesis;
+  if (!s || typeof SpeechSynthesisUtterance === 'undefined') { semVoz('sem-suporte'); return; }
+  falaPendente = texto;
+  // no Chrome, falar logo depois de cancel() faz a fala sumir: espera um instante
+  setTimeout(function () {
+    try { s.resume(); } catch (e) {}
+    var voz = vozPt(), comecou = false;
+    var frases = (texto.match(/[^.!?;]+[.!?;]*/g) || [texto]).map(function (f) { return f.trim(); }).filter(Boolean);
+    falas = [];
+    frases.forEach(function (f, i) {
+      var u = new SpeechSynthesisUtterance(f);
+      u.lang = 'pt-BR'; if (voz) u.voice = voz; u.rate = 1; u.pitch = 1; u.volume = 1;
+      u.onstart = function () { comecou = true; falaPendente = null; status('falando…'); };
+      u.onerror = function (ev) {
+        if (ev.error === 'interrupted' || ev.error === 'canceled') return;
+        semVoz(ev.error);
+      };
+      if (i === frases.length - 1) u.onend = function () { fimFala(); status(''); };
+      falas.push(u);
+      s.speak(u);
+    });
+    // se em 4 s nada começou, o navegador bloqueou ou não tem voz
+    timerVoz = setTimeout(function () {
+      if (!comecou && !s.speaking) semVoz(vozLiberada ? 'sem-voz' : 'not-allowed');
+    }, 4000);
+  }, 300);
+}
+
 function parar() {
-  document.body.classList.remove('falando');
+  fimFala();
   try { if (typeof fully !== 'undefined' && fully.stopTextToSpeech) fully.stopTextToSpeech(); } catch (e) {}
   if (window.speechSynthesis) window.speechSynthesis.cancel();
 }
@@ -794,7 +855,16 @@ function tick() {
 /* =========================================================
    INÍCIO
    ========================================================= */
-$('bFalar').onclick = function (e) { e.stopPropagation(); ultimoMov = Date.now(); status('preparando o resumo…'); carregar().then(function (d) { falar(d.fala); }); };
+$('bFalar').onclick = function (e) {
+  e.stopPropagation(); ultimoMov = Date.now(); liberarVoz();
+  // fala na hora (ainda dentro do toque, senão o navegador bloqueia) e atualiza os dados por trás
+  if (dados && dados.fala) { falar(dados.fala); carregar(); }
+  else { status('preparando o resumo…'); carregar().then(function (d) { falar(d.fala); }); }
+};
+$('tocar').onclick = function (e) {
+  e.stopPropagation(); liberarVoz(); $('tocar').classList.remove('on');
+  falar(falaPendente || (dados && dados.fala));
+};
 $('bParar').onclick = function (e) { e.stopPropagation(); parar(); };
 $('bEmails').onclick = function (e) {
   e.stopPropagation(); ultimoMov = Date.now(); status('lendo seus e-mails…');
@@ -805,7 +875,7 @@ $('cfgOk').onclick = function () {
   guardar('api', CFG.api); guardar('k', CFG.k);
   $('config').classList.remove('on'); carregar();
 };
-document.addEventListener('pointerdown', function (e) { telaCheia(); if (!e.target.closest('button, #config')) aoToque(); else ultimoMov = Date.now(); });
+document.addEventListener('pointerdown', function (e) { telaCheia(); liberarVoz(); if (!e.target.closest('button, #config')) aoToque(); else ultimoMov = Date.now(); });
 document.addEventListener('visibilitychange', function () { if (!document.hidden) carregar(); });
 window.addEventListener('resize', tamanho);
 if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = function () {};
