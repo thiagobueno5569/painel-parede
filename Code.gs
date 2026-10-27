@@ -834,15 +834,16 @@ function faculdadeProximos_() {
   const de = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
   const ate = new Date(de.getTime() + 8 * 86400000);
   return agendaFaculdade_().getEvents(de, ate)
-    .filter(function (e) { return e.isAllDayEvent() || e.getEndTime() > agora; })
+    .filter(function (e) { return (e.isAllDayEvent() || e.getEndTime() > agora) && !e.getTag('aula') && e.getTag('tipo'); })
     .map(function (e) {
       const titulo = e.getTitle();
-      const tipo = e.getTag('tipo') || tipoDe_(titulo) || 'entrega';
+      const tipo = e.getTag('tipo');
       const i = titulo.indexOf(' — ');
+      const resto = i >= 0 ? titulo.slice(i + 3) : titulo;
       return {
         tipo: tipo,
         titulo: titulo,
-        resto: i >= 0 ? titulo.slice(i + 3) : titulo,
+        resto: disciplinaSigaa_(resto) || resto,
         inicio: e.getStartTime().getTime(),
         fim: e.getEndTime().getTime(),
         diaInteiro: e.isAllDayEvent(),
@@ -1112,7 +1113,7 @@ function montarFala_(r, agora) {
   if (valem.length) {
     p.push((valem.length === 1 ? 'Você tem uma aula' : 'Você tem ' + valem.length + ' aulas') + ' pela frente.');
     valem.forEach(function (a, i) {
-      let f = (i === 0 ? 'Primeiro, ' : i === valem.length - 1 ? 'Por último, ' : 'Depois, ') +
+      let f = (valem.length === 1 ? 'É ' : i === 0 ? 'Primeiro, ' : i === valem.length - 1 ? 'Por último, ' : 'Depois, ') +
         a.nome + ' ' + asHora_(a.ini) + ', na ' + a.sala + '.';
       if (a.alertaSaida && a.saida > t) f += ' Saia de casa ' + asHora_(a.saida) + '.';
       if (a.status === 'aviso') f += ' Atenção: ' + a.nota + '.';
@@ -1163,6 +1164,5 @@ function montarFala_(r, agora) {
     else p.push('Amanhã você não tem aula.');
   }
 
-  if (r.emails.total) p.push('Há ' + plural_(r.emails.total, 'e-mail importante', 'e-mails importantes') + ' para ler.');
   return p.join(' ');
 }
