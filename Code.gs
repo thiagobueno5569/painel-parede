@@ -17,8 +17,35 @@ const CONFIG = {
   CIDADE: 'São João del Rei',
   LAT: -21.1356,
   LON: -44.2617,
-  HORA_ACORDAR: '07:00',        // a partir daqui: partículas esperando movimento → painel + resumo falado
-  HORA_DORMIR: '22:30',         // a partir daqui: modo noite (estrelas, lua e horário bem fraquinho)
+  HORA_ACORDAR: '07:00',        // a partir daqui: quadros + resumo falado quando você passar
+  HORA_NOITE: '19:00',          // a partir daqui: modo noite (estrelas, lua e horário bem fraquinho)
+  DESLOCAMENTO_MIN: 20,         // quanto tempo antes da aula você precisa sair de casa
+  LEVAR: ['Caderno', 'Calculadora', 'Carregador', 'Garrafa de água', 'Chaves'],   // lembrete na hora de sair
+
+  // ---------- AULAS (atestado de matrícula 2026.2) ----------
+  // dia: 0 = domingo, 1 = segunda … 6 = sábado
+  PERIODO: { inicio: '2026-08-10', fim: '2026-12-19' },
+  AULAS: [
+    { cod: 'EL00623502', nome: 'Álgebra Linear', curto: 'Álgebra Linear', prof: 'Andreia Malacarne Bueno',
+      local: 'CSA · Pavilhão, sala 2.10/2.11', sala: 'sala 2.10', cor: '#7f97b8',
+      horarios: [{ dia: 2, ini: '08:00', fim: '09:50' }, { dia: 4, ini: '10:00', fim: '11:50' }] },
+    { cod: 'EL01223500', nome: 'Cálculo Vetorial', curto: 'Cálculo Vetorial', prof: 'Edno Alan Pereira',
+      local: 'CSA · Pavilhão, sala 2.05/2.06', sala: 'sala 2.05', cor: '#8fa98a',
+      horarios: [{ dia: 1, ini: '13:15', fim: '15:05' }, { dia: 3, ini: '13:15', fim: '15:05' }] },
+    { cod: 'EL01523508', nome: 'Equações Diferenciais', curto: 'Eq. Diferenciais', prof: 'Ronaldo Ribeiro Alves',
+      local: 'CSA · Pavilhão, sala 2.05/2.06', sala: 'sala 2.05', cor: '#c8835f',
+      horarios: [{ dia: 2, ini: '15:15', fim: '17:05' }, { dia: 4, ini: '13:15', fim: '15:05' }] },
+    { cod: 'QU00719711', nome: 'Fundamentos de Mecânica Clássica', curto: 'Mecânica Clássica', prof: 'Alfredo Vinicius Andrade Guimarães',
+      local: 'DCNAT · sala A-3.09', sala: 'sala A 3.09', cor: '#a690b5',
+      horarios: [{ dia: 2, ini: '19:00', fim: '20:50' }, { dia: 3, ini: '21:00', fim: '22:50' }] },
+    { cod: 'EL01723510', nome: 'Mecânica dos Sólidos', curto: 'Mec. dos Sólidos', prof: 'Luan Carrera Santos',
+      local: 'CSA · Pavilhão, sala 2.05/2.06', sala: 'sala 2.05', cor: '#cdaa60',
+      horarios: [{ dia: 5, ini: '13:15', fim: '15:05' }] }
+  ],
+
+  // ---------- REMÉDIOS ----------
+  // Dá para cadastrar e editar pelo próprio tablet (botão "Remédios"). Esta lista só vale até lá.
+  REMEDIOS: [],
   GEMINI_API_KEY: '',           // opcional (aistudio.google.com) — deixa a leitura dos e-mails bem mais esperta
   GEMINI_MODELO: 'gemini-2.5-flash',
   MARCADOR: 'Assistente/Lido',  // marcador posto nos e-mails já analisados
@@ -50,6 +77,7 @@ function setup() {
   ScriptApp.newTrigger('rotina').timeBased().everyMinutes(15).create();
   marcador_();
   agendaFaculdade_();
+  tentar_(criarAulasNaAgenda);
   listarAgendas();
   Logger.log('Gmail conectado: ' + Session.getActiveUser().getEmail() + ' (o script lê a caixa desta conta)');
   const props = PropertiesService.getScriptProperties();
@@ -73,12 +101,17 @@ function doGet(e) {
   }
   if (e.parameter.formato === 'json') {
     if (e.parameter.escanear === '1') rotina();
-    return ContentService.createTextOutput(JSON.stringify(getBriefing()))
-      .setMimeType(ContentService.MimeType.JSON);
+    let r;
+    try {
+      r = api_(e.parameter.acao || '', e.parameter.p ? JSON.parse(e.parameter.p) : {});
+    } catch (err) {
+      r = { erro: String(err) };
+    }
+    return ContentService.createTextOutput(JSON.stringify(r)).setMimeType(ContentService.MimeType.JSON);
   }
   const t = HtmlService.createTemplateFromFile('Index');
   t.horaAcordar = CONFIG.HORA_ACORDAR;
-  t.horaDormir = CONFIG.HORA_DORMIR;
+  t.horaDormir = CONFIG.HORA_NOITE;
   t.k = k;
   return t.evaluate()
     .setTitle('Assistente')
@@ -101,6 +134,166 @@ function escanearAgora(k) {
   checarChave_(k);
   rotina();
   return getBriefing();
+}
+
+/** Todas as ações do tablet passam por aqui (google.script.run ou ?formato=json&acao=…) */
+function apiTablet(k, acao, p) {
+  checarChave_(k);
+  return api_(acao || '', p || {});
+}
+
+function api_(acao, p) {
+  if (acao === 'escanear') rotina();
+  else if (acao === 'tomei') marcarRemedio_(p.id, p.hora, true);
+  else if (acao === 'desfazer') marcarRemedio_(p.id, p.hora, false);
+  else if (acao === 'remedios') salvarRemedios_(p.lista);
+  return getBriefing();
+}
+
+// ---------------------------------------------------------- REMÉDIOS
+
+function listaRemedios_() {
+  const s = PropertiesService.getScriptProperties().getProperty('REMEDIOS');
+  return s ? JSON.parse(s) : CONFIG.REMEDIOS;
+}
+
+function salvarRemedios_(lista) {
+  if (!Array.isArray(lista)) throw new Error('lista inválida');
+  const limpa = lista.slice(0, 20).map(function (r, i) {
+    const horas = (Array.isArray(r.horas) ? r.horas : String(r.horas || '').split(/[,;\s]+/))
+      .map(function (h) { const m = String(h).match(/^(\d{1,2})[:h]?(\d{2})?$/); return m && +m[1] < 24 ? ('0' + m[1]).slice(-2) + ':' + (m[2] || '00') : null; })
+      .filter(function (h) { return h; }).sort();
+    return {
+      id: String(r.id || ('r' + Date.now().toString(36) + i)).slice(0, 24),
+      nome: String(r.nome || '').trim().slice(0, 60),
+      dose: String(r.dose || '').trim().slice(0, 60),
+      horas: horas
+    };
+  }).filter(function (r) { return r.nome && r.horas.length; });
+  PropertiesService.getScriptProperties().setProperty('REMEDIOS', JSON.stringify(limpa));
+}
+
+function hojeIso_(d) { return Utilities.formatDate(d || new Date(), TZ, 'yyyy-MM-dd'); }
+
+function tomados_() {
+  const s = PropertiesService.getScriptProperties().getProperty('TOMADOS');
+  return s ? JSON.parse(s) : {};
+}
+
+function marcarRemedio_(id, hora, tomou) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    const t = tomados_(), dia = hojeIso_();
+    t[dia] = t[dia] || {};
+    if (tomou) t[dia][id + '@' + hora] = Date.now(); else delete t[dia][id + '@' + hora];
+    Object.keys(t).sort().slice(0, -7).forEach(function (d) { delete t[d]; });   // guarda só 7 dias
+    PropertiesService.getScriptProperties().setProperty('TOMADOS', JSON.stringify(t));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function msHora_(dia, hhmm) {
+  const p = String(hhmm).split(':');
+  return new Date(dia.getFullYear(), dia.getMonth(), dia.getDate(), +p[0], +p[1] || 0).getTime();
+}
+
+function remediosHoje_() {
+  const agora = new Date(), feitos = tomados_()[hojeIso_()] || {}, out = [];
+  const lista = listaRemedios_();
+  lista.forEach(function (r) {
+    r.horas.forEach(function (h) {
+      out.push({ id: r.id, nome: r.nome, dose: r.dose, hora: h, ms: msHora_(agora, h), tomado: feitos[r.id + '@' + h] || null });
+    });
+  });
+  out.sort(function (a, b) { return a.ms - b.ms; });
+  return { lista: lista, hoje: out };
+}
+
+// ---------------------------------------------------------- AULAS
+
+function dataIsoParaDate_(s) { const p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+
+function semAcento_(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+
+/** Aulas de um dia, já com hora de sair e avisos de feriado/cancelamento. eventos = eventos do dia (opcional) */
+function aulasDoDia_(d, eventos) {
+  const dia = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const ini = dataIsoParaDate_(CONFIG.PERIODO.inicio), fim = dataIsoParaDate_(CONFIG.PERIODO.fim);
+  if (dia < ini || dia > fim) return [];
+  const lista = [];
+  CONFIG.AULAS.forEach(function (a) {
+    a.horarios.forEach(function (h) {
+      if (h.dia !== dia.getDay()) return;
+      lista.push({
+        cod: a.cod, nome: a.nome, curto: a.curto, prof: a.prof, local: a.local, sala: a.sala, cor: a.cor,
+        ini: msHora_(dia, h.ini), fim: msHora_(dia, h.fim), hIni: h.ini, hFim: h.fim,
+        saida: msHora_(dia, h.ini) - CONFIG.DESLOCAMENTO_MIN * 60000,
+        alertaSaida: true, status: 'normal', nota: ''
+      });
+    });
+  });
+  lista.sort(function (x, y) { return x.ini - y.ini; });
+  // se a aula anterior terminou há menos de 1 h, você provavelmente ainda está no campus
+  for (let i = 1; i < lista.length; i++) {
+    if (lista[i].ini - lista[i - 1].fim < 3600000) lista[i].alertaSaida = false;
+  }
+  // feriados e avisos de "sem aula" vindos dos e-mails
+  (eventos || []).forEach(function (e) {
+    const t = semAcento_(e.titulo), feriado = /feriado|holiday/i.test(e.agenda || '');
+    if (feriado) {
+      const facultativo = /servidor|facultativo|carnaval|cinzas|corpus|vespera/.test(t);
+      lista.forEach(function (a) {
+        if (facultativo) { if (a.status === 'normal') { a.status = 'aviso'; a.nota = e.titulo + ' — confirme se há aula'; } }
+        else { a.status = 'cancelada'; a.nota = 'Feriado: ' + e.titulo; }
+      });
+    } else if (e.tipo === 'sem_aula' || /^🚫/.test(e.titulo)) {
+      const alvo = lista.filter(function (a) {
+        return semAcento_(a.nome).split(' ').filter(function (w) { return w.length > 4; })
+          .some(function (w) { return t.indexOf(w) >= 0; });
+      });
+      if (alvo.length) alvo.forEach(function (a) { a.status = 'cancelada'; a.nota = 'Aviso por e-mail: sem aula'; });
+      else lista.forEach(function (a) { if (a.status === 'normal') { a.status = 'aviso'; a.nota = 'Há um aviso de "sem aula" hoje — confira o e-mail'; } });
+    }
+  });
+  lista.forEach(function (a) { if (a.status === 'cancelada') a.alertaSaida = false; });
+  return lista;
+}
+
+/** Cria as aulas como eventos semanais na agenda "Faculdade" (aparecem no celular com lembrete). Pode rodar de novo sem duplicar. */
+function criarAulasNaAgenda() {
+  const cal = agendaFaculdade_();
+  const ini = dataIsoParaDate_(CONFIG.PERIODO.inicio), fim = dataIsoParaDate_(CONFIG.PERIODO.fim);
+  const ate = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate() + 1);
+  const existentes = {};
+  cal.getEvents(ini, ate).forEach(function (e) { const t = e.getTag('aula'); if (t) existentes[t] = true; });
+  const W = [CalendarApp.Weekday.SUNDAY, CalendarApp.Weekday.MONDAY, CalendarApp.Weekday.TUESDAY, CalendarApp.Weekday.WEDNESDAY,
+    CalendarApp.Weekday.THURSDAY, CalendarApp.Weekday.FRIDAY, CalendarApp.Weekday.SATURDAY];
+  let n = 0;
+  CONFIG.AULAS.forEach(function (a) {
+    a.horarios.forEach(function (h) {
+      const tag = a.cod + '-' + h.dia + '-' + h.ini;
+      if (existentes[tag]) return;
+      // primeira ocorrência a partir do início do período
+      const p = new Date(ini);
+      while (p.getDay() !== h.dia) p.setDate(p.getDate() + 1);
+      const s = cal.createEventSeries(a.nome, new Date(msHora_(p, h.ini)), new Date(msHora_(p, h.fim)),
+        CalendarApp.newRecurrence().addWeeklyRule().onlyOnWeekday(W[h.dia]).until(ate),
+        { location: a.local, description: 'Prof. ' + a.prof + '\n' + a.cod + '\nCriado pelo Assistente de Parede.' });
+      s.removeAllReminders();
+      s.addPopupReminder(CONFIG.DESLOCAMENTO_MIN + 15);
+      s.addPopupReminder(CONFIG.DESLOCAMENTO_MIN);
+      s.setTag('aula', tag);
+      n++;
+    });
+  });
+  Logger.log(n ? 'Criei ' + n + ' série(s) de aulas na agenda "' + cal.getName() + '".' : 'As aulas já estavam na agenda.');
+}
+
+function ehAula_(e) {
+  const t = semAcento_(e.titulo);
+  return !!e.aula || CONFIG.AULAS.some(function (a) { return semAcento_(a.nome) === t; });
 }
 
 /** Roda a cada 15 min: e-mails gerais + e-mails da faculdade */
@@ -707,18 +900,26 @@ function adicionadosRecentes_() {
 function getBriefing() {
   const agora = new Date();
   const amanha = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + 1);
+  const evHoje = tentar_(function () { return eventosDoDia_(agora); }) || [];
+  const evAmanha = tentar_(function () { return eventosDoDia_(amanha); }) || [];
   const r = {
     geradoEm: agora.getTime(),
     nome: CONFIG.NOME,
     horaAcordar: CONFIG.HORA_ACORDAR,
-    horaDormir: CONFIG.HORA_DORMIR,
+    horaNoite: CONFIG.HORA_NOITE,
+    horaDormir: CONFIG.HORA_NOITE,
+    deslocamento: CONFIG.DESLOCAMENTO_MIN,
+    levar: CONFIG.LEVAR,
     dataTexto: DIAS[agora.getDay()] + ', ' + agora.getDate() + ' de ' + MESES[agora.getMonth()],
     cidade: CONFIG.CIDADE,
     clima: tentar_(clima_),
-    hoje: tentar_(function () { return eventosDoDia_(agora); }) || [],
-    amanha: tentar_(function () { return eventosDoDia_(amanha); }) || [],
+    hoje: evHoje.filter(function (e) { return !ehAula_(e); }),
+    amanha: evAmanha.filter(function (e) { return !ehAula_(e); }),
+    aulasHoje: tentar_(function () { return aulasDoDia_(agora, evHoje); }) || [],
+    aulasAmanha: tentar_(function () { return aulasDoDia_(amanha, evAmanha); }) || [],
+    grade: CONFIG.AULAS.map(function (a) { return { cod: a.cod, nome: a.nome, curto: a.curto, local: a.local, cor: a.cor, horarios: a.horarios }; }),
+    remedios: tentar_(remediosHoje_) || { lista: [], hoje: [] },
     emails: tentar_(emailsImportantes_) || { total: 0, lista: [] },
-    noticias: tentar_(noticias_) || [],
     adicionados: tentar_(adicionadosRecentes_) || [],
     faculdade: tentar_(faculdadeProximos_) || [],
     proximos: tentar_(function () { return eventosProximos_(7); }) || [],
@@ -742,7 +943,7 @@ function eventosProximos_(dias) {
   const h = new Date();
   const ini = new Date(h.getFullYear(), h.getMonth(), h.getDate() + 1);
   const fim = new Date(h.getFullYear(), h.getMonth(), h.getDate() + 1 + dias);
-  return eventosPeriodo_(ini, fim).slice(0, 12).map(function (e) {
+  return eventosPeriodo_(ini, fim).filter(function (e) { return !ehAula_(e); }).slice(0, 12).map(function (e) {
     e.dia = diaCurto_(new Date(e.inicio));
     return e;
   });
@@ -756,7 +957,7 @@ function mapaMes_() {
   const mapa = {};
   eventosPeriodo_(ini, fim).forEach(function (e) {
     const d = new Date(e.inicio);
-    if (d < ini) return;
+    if (d < ini || ehAula_(e)) return;
     const k = String(d.getDate());
     mapa[k] = mapa[k] || { n: 0, tipos: [] };
     mapa[k].n++;
@@ -782,6 +983,7 @@ function eventosPeriodo_(ini, fim) {
         hora: e.isAllDayEvent() ? 'Dia todo' : Utilities.formatDate(e.getStartTime(), TZ, 'HH:mm'),
         local: e.getLocation() || '',
         tipo: e.getTag('tipo') || '',
+        aula: e.getTag('aula') || '',
         agenda: c.getName()
       });
     });
@@ -886,64 +1088,81 @@ function horaFalada_(ms) {
   return m === 0 ? h + (h === 1 ? ' hora' : ' horas') : h + ' e ' + m;
 }
 
+/** "às 8 horas", "ao meio-dia", "à 1 hora" */
+function asHora_(ms) {
+  const f = horaFalada_(ms);
+  if (f === 'meio-dia') return 'ao meio-dia';
+  if (f === 'meia-noite') return 'à meia-noite';
+  if (/^1( |$)/.test(f)) return 'à ' + f;
+  return 'às ' + f;
+}
+
 function plural_(n, s, p) { return n + ' ' + (n === 1 ? s : p); }
 
 function montarFala_(r, agora) {
   const h = +Utilities.formatDate(agora, TZ, 'H');
+  const t = agora.getTime();
   const saud = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
-  const p = [saud + ', ' + CONFIG.NOME + '! Hoje é ' + r.dataTexto + '.'];
+  const p = [saud + ', ' + CONFIG.NOME + '. Hoje é ' + r.dataTexto + '.'];
 
-  const c = r.clima;
-  if (c) {
-    p.push('Agora faz ' + c.agora + ' graus em ' + CONFIG.CIDADE + ', ' + c.descricao.toLowerCase() +
-      '. A máxima hoje é de ' + c.max + ' e a mínima de ' + c.min + ' graus.');
-    if (c.chuva >= 50) p.push('Tem ' + c.chuva + ' por cento de chance de chuva, então leve o guarda-chuva.');
-    else if (c.chuva >= 25) p.push('Há uma pequena chance de chuva, de ' + c.chuva + ' por cento.');
-    if (c.uv >= 8) p.push('O índice UV vai ficar muito alto, use protetor solar.');
-  }
-
-  const pendentes = r.hoje.filter(function (e) { return e.diaInteiro || e.fim > agora.getTime(); });
-  if (!pendentes.length) {
-    p.push(r.hoje.length ? 'Seus compromissos de hoje já passaram.' : 'Você não tem compromissos na agenda hoje.');
-  } else {
-    const itens = pendentes.slice(0, 5).map(function (e) {
-      return e.diaInteiro ? e.titulo + ', o dia todo' : 'às ' + horaFalada_(e.inicio) + ', ' + e.titulo;
+  // 1. aulas — o mais importante primeiro
+  const aulas = r.aulasHoje.filter(function (a) { return a.fim > t; });
+  const valem = aulas.filter(function (a) { return a.status !== 'cancelada'; });
+  const canceladas = aulas.filter(function (a) { return a.status === 'cancelada'; });
+  if (valem.length) {
+    p.push((valem.length === 1 ? 'Você tem uma aula' : 'Você tem ' + valem.length + ' aulas') + ' pela frente.');
+    valem.forEach(function (a, i) {
+      let f = (i === 0 ? 'Primeiro, ' : i === valem.length - 1 ? 'Por último, ' : 'Depois, ') +
+        a.nome + ' ' + asHora_(a.ini) + ', na ' + a.sala + '.';
+      if (a.alertaSaida && a.saida > t) f += ' Saia de casa ' + asHora_(a.saida) + '.';
+      if (a.status === 'aviso') f += ' Atenção: ' + a.nota + '.';
+      p.push(f);
     });
-    p.push('Você tem ' + plural_(pendentes.length, 'compromisso', 'compromissos') + ' hoje: ' + itens.join('; ') + '.');
+  } else if (!aulas.length && r.aulasHoje.length) {
+    p.push('Suas aulas de hoje já terminaram.');
+  } else if (!r.aulasHoje.length) {
+    p.push('Hoje você não tem aula.');
   }
-  if (h >= 17 && r.amanha.length) {
-    const e = r.amanha[0];
-    p.push('Amanhã, o primeiro compromisso é ' + (e.diaInteiro ? e.titulo + ', o dia todo' : 'às ' + horaFalada_(e.inicio) + ', ' + e.titulo) + '.');
-  }
+  canceladas.forEach(function (a) { p.push(a.nome + ' de hoje não vai acontecer. ' + a.nota + '.'); });
 
-  // faculdade: aula cancelada só hoje/amanhã; provas e entregas da semana
-  const fac = r.faculdade.filter(function (e) { return e.tipo !== 'sem_aula' || diasAte_(e.inicio) <= 1; });
-  if (fac.length) {
-    p.push('Na faculdade: ' + fac.slice(0, 5).map(function (e) {
-      const quando = diaFalado_(e.inicio);
-      if (e.tipo === 'sem_aula') return quando + ' não vai ter aula, ' + e.resto;
-      const hora = e.diaInteiro ? '' : (e.tipo === 'entrega' ? ' até as ' : ' às ') + horaFalada_(e.prazo);
-      return TIPOS[e.tipo].fala + ' de ' + e.resto + ', ' + quando + hora;
+  // 2. remédios ainda não tomados
+  const rem = (r.remedios.hoje || []).filter(function (x) { return !x.tomado && x.ms > t - 3 * 3600000; });
+  if (rem.length) {
+    p.push('Remédios: ' + rem.slice(0, 4).map(function (x) {
+      return x.nome + (x.ms <= t ? ', que já passou da hora' : ' ' + asHora_(x.ms));
     }).join('; ') + '.');
   }
 
-  if (r.adicionados.length) {
-    p.push('Também adicionei à sua agenda ' + plural_(r.adicionados.length, 'evento', 'eventos') +
-      ' que encontrei nos seus e-mails: ' + r.adicionados.slice(0, 3).map(function (a) { return a.titulo; }).join('; ') + '.');
+  // 3. outros compromissos da agenda
+  const pend = r.hoje.filter(function (e) { return !e.diaInteiro && e.fim > t; });
+  if (pend.length) {
+    p.push('Na agenda: ' + pend.slice(0, 3).map(function (e) { return e.titulo + ' ' + asHora_(e.inicio); }).join('; ') + '.');
   }
 
-  const em = r.emails;
-  if (em.total) {
-    p.push('Você tem ' + plural_(em.total, 'e-mail importante não lido', 'e-mails importantes não lidos') + '. ' +
-      em.lista.slice(0, 3).map(function (x) { return 'De ' + x.de + ': ' + x.assunto; }).join('. ') + '.');
-  } else {
-    p.push('Nenhum e-mail importante esperando por você.');
+  // 4. provas e prazos da semana
+  const fac = r.faculdade.filter(function (e) { return e.tipo === 'prova' || e.tipo === 'entrega'; });
+  if (fac.length) {
+    p.push('Fique de olho: ' + fac.slice(0, 3).map(function (e) {
+      const hora = e.diaInteiro ? '' : (e.tipo === 'entrega' ? ' até ' : ' ') + asHora_(e.prazo);
+      return TIPOS[e.tipo].fala + ' de ' + e.resto + ', ' + diaFalado_(e.inicio) + hora;
+    }).join('; ') + '.');
   }
 
-  if (r.noticias.length) {
-    p.push('Nas notícias: ' + r.noticias.slice(0, 3).map(function (n) { return n.titulo; }).join('. ') + '.');
+  // 5. clima, curto
+  const c = r.clima;
+  if (c) {
+    let f = 'Agora faz ' + c.agora + ' graus, ' + c.descricao.toLowerCase() + ', com máxima de ' + c.max + '.';
+    if (c.chuva >= 50) f += ' Leve guarda-chuva.';
+    p.push(f);
   }
 
-  p.push(h < 12 ? 'Tenha um ótimo dia!' : h < 18 ? 'Boa tarde pra você!' : 'Tenha uma boa noite!');
+  // 6. amanhã (à noite)
+  if (h >= 17) {
+    const am = (r.aulasAmanha || []).filter(function (a) { return a.status !== 'cancelada'; });
+    if (am.length) p.push('Amanhã a primeira aula é ' + am[0].nome + ' ' + asHora_(am[0].ini) + '; saia ' + asHora_(am[0].saida) + '.');
+    else p.push('Amanhã você não tem aula.');
+  }
+
+  if (r.emails.total) p.push('Há ' + plural_(r.emails.total, 'e-mail importante', 'e-mails importantes') + ' para ler.');
   return p.join(' ');
 }

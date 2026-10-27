@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Atelier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,400&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --parede: #12110f;
+    --painel: #171614;
+    --tinta: #ece6db;
+    --suave: #aaa397;
+    --apagado: #6f6a61;
+    --linha: rgba(236, 230, 219, .09);
+    --linha2: rgba(236, 230, 219, .16);
+    --ouro: #c4a878;
+    --alerta: #d97a6c;
+    --ok: #9bb48a;
+    --serif: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+    --sans: 'Instrument Sans', 'Helvetica Neue', Roboto, Arial, sans-serif;
+    --dx: 0px; --dy: 0px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%; overflow: hidden; background: var(--parede); color: var(--tinta);
+    font-family: var(--sans); font-weight: 400; -webkit-font-smoothing: antialiased;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  .num { font-variant-numeric: lining-nums tabular-nums; }
+  .olho { font-size: 1.02vw; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: var(--apagado); }
+
+  .tela { position: fixed; inset: 0; opacity: 0; pointer-events: none; transition: opacity 1.2s ease; }
+  body.m-quadro #quadro, body.m-painel #painel, body.m-noite #noite, body.m-foco #foco { opacity: 1; pointer-events: auto; }
+  #ceu { position: fixed; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 1.5s; }
+  body.m-noite #ceu { opacity: 1; }
+
+  /* ================= QUADRO ================= */
+  #quadro { background:
+      radial-gradient(70% 55% at 50% 0%, rgba(255, 236, 200, .07), transparent 70%),
+      linear-gradient(#141210, #0f0e0c); }
+  .parede { position: absolute; left: 0; right: 0; top: 0; bottom: 23vh; display: flex; align-items: center; justify-content: center; }
+  .moldura {
+    position: relative; padding: 2.6vh; background: #e8e1d3; transform: translate(var(--dx), var(--dy));
+    box-shadow: 0 0 0 1.1vh #201c17, 0 0 0 1.3vh #3b342b, 0 2.5vh 5vh rgba(0, 0, 0, .55), 0 .6vh 1.2vh rgba(0, 0, 0, .45);
+    transition: opacity 1.4s ease;
+  }
+  .moldura.saindo { opacity: 0; }
+  .moldura img { display: block; max-width: 80vw; max-height: 61vh; box-shadow: inset 0 0 0 1px rgba(0,0,0,.2); }
+  .moldura::after { content: ''; position: absolute; inset: 2.6vh; box-shadow: inset 0 .4vh 1vh rgba(0, 0, 0, .28); pointer-events: none; }
+  .etiqueta {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 23vh; padding: 0 4.6vw 4.4vh;
+    display: grid; grid-template-columns: auto 1fr auto; align-items: end; gap: 3.6vw; transform: translate(var(--dx), var(--dy));
+  }
+  .q-hora { font-family: var(--serif); font-weight: 300; font-size: 10.5vw; line-height: .78; letter-spacing: -.01em; }
+  .q-data { margin-top: 1.6vh; font-size: 1.05vw; letter-spacing: .24em; text-transform: uppercase; color: var(--suave); }
+  .q-obra { border-left: 1px solid var(--linha2); padding-left: 1.8vw; align-self: end; margin-bottom: .6vh; max-width: 34vw; }
+  .q-obra i { display: block; font-family: var(--serif); font-size: 1.75vw; line-height: 1.15; color: var(--tinta); }
+  .q-obra span { display: block; font-size: 1.05vw; color: var(--suave); margin-top: .7vh; }
+  .q-obra small { display: block; font-size: .85vw; color: var(--apagado); margin-top: .4vh; letter-spacing: .04em; }
+  .q-prox { text-align: right; margin-bottom: .6vh; max-width: 32vw; }
+  .q-prox .olho { display: flex; justify-content: flex-end; align-items: center; gap: .7vw; }
+  .q-prox .nome { font-family: var(--serif); font-size: 2.5vw; line-height: 1.05; margin-top: .9vh; }
+  .q-prox .det { font-size: 1.2vw; color: var(--suave); margin-top: .8vh; }
+  .q-prox.urgente .olho, .q-prox.urgente .det b { color: var(--alerta); }
+  .ponto { display: inline-block; width: .75vw; height: .75vw; border-radius: 50%; background: var(--c, var(--ouro)); flex: none; }
+
+  /* ================= PAINEL ================= */
+  #painel { background: var(--painel); display: grid; grid-template-rows: auto 1fr auto; padding: 3.4vh 4vw 0; }
+  body.noturno #painel { filter: brightness(.62); }
+  .p-topo { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 1.8vh; border-bottom: 1px solid var(--linha); }
+  .p-data { font-family: var(--serif); font-style: italic; font-size: 2.05vw; color: var(--tinta); }
+  .p-clima { font-size: 1.2vw; color: var(--suave); }
+  .p-clima b { color: var(--tinta); font-weight: 500; }
+  .p-meio { display: grid; grid-template-columns: 37% 1fr; gap: 4vw; min-height: 0; padding-top: 2.6vh; }
+  .col { display: flex; flex-direction: column; min-height: 0; }
+  .p-hora { font-family: var(--serif); font-weight: 300; font-size: 8.6vw; line-height: .8; letter-spacing: -.01em; margin: .4vh 0 3.4vh -.3vw; }
+
+  .agora { border-top: 1px solid var(--linha); padding-top: 2.2vh; }
+  .agora-corpo { display: grid; grid-template-columns: 10.5vw 1fr; gap: 1.8vw; align-items: center; margin-top: 1.6vh; }
+  .anel { width: 10.5vw; height: 10.5vw; }
+  .a-grande { font-family: var(--serif); font-size: 3.6vw; line-height: .95; }
+  .a-nome { font-family: var(--serif); font-size: 1.9vw; line-height: 1.1; margin-top: .6vh; }
+  .a-det { font-size: 1.1vw; color: var(--suave); margin-top: .8vh; line-height: 1.5; }
+  .agora.urgente .olho { color: var(--alerta); }
+  .aviso-aula { margin-top: 1.2vh; font-size: 1.05vw; color: var(--ouro); }
+
+  .rem { border-top: 1px solid var(--linha); padding-top: 2.2vh; margin-top: 3vh; min-height: 0; }
+  .rem-lista { list-style: none; margin-top: 1.2vh; }
+  .rem-lista li { display: grid; grid-template-columns: 5vw 1fr auto; align-items: center; gap: 1vw; padding: 1.05vh 0; border-bottom: 1px solid var(--linha); }
+  .rem-lista li:last-child { border-bottom: 0; }
+  .rem-lista .h { font-size: 1.2vw; color: var(--suave); }
+  .rem-lista .n { font-size: 1.35vw; }
+  .rem-lista .n small { color: var(--apagado); font-size: 1.05vw; margin-left: .5vw; }
+  .rem-lista li.atrasado .h { color: var(--alerta); font-weight: 600; }
+  .rem-lista li.feito { opacity: .45; }
+  .marcar { width: 3.2vw; height: 3.2vw; border-radius: 50%; border: 1px solid var(--linha2); display: grid; place-items: center; }
+  .marcar svg { width: 1.4vw; height: 1.4vw; stroke: var(--apagado); }
+  li.feito .marcar { background: var(--ok); border-color: var(--ok); }
+  li.feito .marcar svg { stroke: #12110f; }
+  .vazio { font-size: 1.15vw; color: var(--apagado); padding: 1vh 0; line-height: 1.5; }
+
+  .abas { display: flex; gap: 2.4vw; border-bottom: 1px solid var(--linha); }
+  .abas button { padding: 0 0 1.3vh; font-size: 1.02vw; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: var(--apagado); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .abas button.on { color: var(--tinta); border-color: var(--ouro); }
+  .vista { display: none; min-height: 0; flex: 1; overflow: hidden; padding-top: 1.4vh; }
+  .vista.on { display: flex; flex-direction: column; }
+
+  .dia-todo { display: flex; flex-wrap: wrap; gap: .6vw; margin-bottom: 1vh; }
+  .dia-todo span { font-size: .98vw; color: var(--suave); border: 1px solid var(--linha2); border-radius: 99px; padding: .4vh .9vw; }
+  .agenda { list-style: none; }
+  .agenda li { display: grid; grid-template-columns: 8.6vw .3vw 1fr auto; gap: 1.3vw; align-items: center; padding: 1.25vh 0; border-bottom: 1px solid var(--linha); }
+  .agenda .t { font-size: 1.15vw; color: var(--suave); line-height: 1.35; }
+  .agenda .t b { display: block; font-weight: 500; color: var(--tinta); font-size: 1.3vw; }
+  .agenda .barra { align-self: stretch; border-radius: 2px; background: var(--c, var(--apagado)); }
+  .agenda .ti { font-family: var(--serif); font-size: 1.85vw; line-height: 1.1; }
+  .agenda .me { font-size: 1.02vw; color: var(--apagado); margin-top: .4vh; }
+  .agenda .st { font-size: .9vw; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--apagado); text-align: right; }
+  .agenda li.agora .st { color: var(--ouro); }
+  .agenda li.sair .st { color: var(--alerta); }
+  .agenda li.passou { opacity: .38; }
+  .agenda li.cancelada .ti { text-decoration: line-through; text-decoration-thickness: 1px; color: var(--apagado); }
+  .agenda li.cancelada .st, .agenda li.aviso .st { color: var(--ouro); }
+
+  .bloco { margin-top: 2.4vh; }
+  .prazos { list-style: none; margin-top: 1vh; }
+  .prazos li { display: grid; grid-template-columns: 8.6vw 6.4vw 1fr; gap: 1.3vw; align-items: baseline; padding: .9vh 0; font-size: 1.25vw; }
+  .prazos .d { font-size: 1.1vw; color: var(--suave); }
+  .prazos .tg { font-size: .85vw; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; }
+  .tg.prova { color: var(--alerta); } .tg.entrega { color: var(--ouro); } .tg.reposicao { color: var(--ok); } .tg.sem_aula { color: var(--suave); }
+  .amanha-linha { margin-top: auto; padding: 1.6vh 0 .4vh; font-size: 1.15vw; color: var(--suave); border-top: 1px solid var(--linha); }
+  .amanha-linha b { color: var(--tinta); font-weight: 500; }
+
+  /* semana */
+  .semana { position: relative; flex: 1; display: grid; grid-template-columns: 4vw repeat(5, 1fr); grid-template-rows: auto 1fr; gap: 0 .6vw; min-height: 0; }
+  .sem-cab { grid-row: 1; text-align: center; font-size: .98vw; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--apagado); padding-bottom: 1vh; }
+  .sem-cab.hoje { color: var(--ouro); }
+  .sem-col { grid-row: 2; position: relative; border-left: 1px solid var(--linha); }
+  .sem-col.hoje { background: rgba(196, 168, 120, .05); }
+  .sem-reg { grid-row: 2; position: relative; }
+  .sem-reg span { position: absolute; right: .6vw; transform: translateY(-50%); font-size: .85vw; color: var(--apagado); }
+  .sem-linha { position: absolute; left: 0; right: 0; border-top: 1px solid var(--linha); }
+  .sem-aula { position: absolute; left: .3vw; right: .3vw; border-radius: .5vw; padding: .5vh .55vw; overflow: hidden;
+    background: color-mix(in srgb, var(--c) 20%, transparent); border-left: .32vw solid var(--c); }
+  .sem-aula b { display: block; font-weight: 500; font-size: .98vw; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sem-aula span { display: block; font-size: .82vw; color: var(--suave); margin-top: .2vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sem-agora { position: absolute; left: 0; right: 0; border-top: 2px solid var(--alerta); }
+  .sem-agora::before { content: ''; position: absolute; left: -.45vw; top: -.5vw; width: .8vw; height: .8vw; border-radius: 50%; background: var(--alerta); }
+
+  .p-rodape { display: flex; align-items: center; gap: .8vw; border-top: 1px solid var(--linha); padding: 1.8vh 0 2.2vh; margin-top: 1.6vh; }
+  .p-rodape button { font-size: 1.12vw; font-weight: 500; padding: 1.25vh 1.5vw; border: 1px solid var(--linha2); border-radius: 99px; color: var(--tinta); }
+  .p-rodape button.pri { background: var(--tinta); color: #151412; border-color: var(--tinta); }
+  .p-rodape button:active { transform: scale(.97); }
+  body.falando #bFalar { background: var(--ouro); border-color: var(--ouro); }
+  .status { margin-left: auto; font-size: .98vw; color: var(--apagado); }
+
+  /* ================= NOITE ================= */
+  #noite { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 13vh; }
+  .n-hora { font-family: var(--serif); font-weight: 300; font-size: 14vw; line-height: 1; color: rgb(200, 205, 222); opacity: .13;
+    transition: opacity 1.6s ease; transform: translate(var(--dx), var(--dy)); }
+  .n-linha { font-size: 1.25vw; letter-spacing: .14em; color: var(--suave); opacity: .0; margin-top: 2vh; text-align: center; transition: opacity 1.6s ease;
+    transform: translate(var(--dx), var(--dy)); }
+  .n-linha b { color: var(--tinta); font-weight: 500; }
+  body.espiando .n-hora { opacity: .6; }
+  body.espiando .n-linha { opacity: .62; }
+  .n-linha.importante { opacity: .38; }
+
+  /* ================= ALERTA ================= */
+  #alerta { position: fixed; inset: 0; z-index: 20; background: #0e0d0b; display: none; grid-template-columns: 1.1vw 1fr 34vw; }
+  body.alerta-on #alerta { display: grid; }
+  body.alerta-on.noturno #alerta { filter: brightness(.7); }
+  .al-faixa { background: var(--c, var(--ouro)); }
+  .al-texto { padding: 9vh 4vw 7vh 5vw; display: flex; flex-direction: column; }
+  .al-texto .olho { font-size: 1.25vw; color: var(--c, var(--ouro)); }
+  .al-titulo { font-family: var(--serif); font-weight: 400; font-size: 6.2vw; line-height: .98; margin-top: 2.4vh; }
+  .al-det { font-size: 1.6vw; color: var(--suave); margin-top: 2.6vh; line-height: 1.55; }
+  .al-det b { color: var(--tinta); font-weight: 500; }
+  .al-levar { margin-top: 4vh; }
+  .al-levar .olho { color: var(--apagado); font-size: 1vw; }
+  .chips { display: flex; flex-wrap: wrap; gap: .8vw; margin-top: 1.4vh; }
+  .chips button { font-size: 1.3vw; padding: 1.1vh 1.4vw; border: 1px solid var(--linha2); border-radius: 99px; color: var(--suave); }
+  .chips button.ok { color: #12110f; background: var(--ok); border-color: var(--ok); }
+  .al-botoes { margin-top: auto; display: flex; gap: 1.2vw; }
+  .al-botoes button { font-size: 1.6vw; font-weight: 500; padding: 2.2vh 3vw; border-radius: 99px; border: 1px solid var(--linha2); }
+  .al-botoes button.pri { background: var(--tinta); color: #12110f; border-color: var(--tinta); }
+  .al-lado { display: flex; flex-direction: column; align-items: center; justify-content: center; border-left: 1px solid var(--linha); }
+  .al-anel { width: 24vw; height: 24vw; }
+  .al-cont { font-family: var(--serif); font-size: 5.6vw; line-height: 1; margin-top: 3vh; }
+  .al-sub { font-size: 1.2vw; color: var(--suave); margin-top: 1vh; letter-spacing: .06em; }
+
+  /* aviso curto (antes da hora) */
+  #toast { position: fixed; z-index: 15; top: 3vh; left: 50%; transform: translate(-50%, -16vh); transition: transform .7s cubic-bezier(.2, .8, .2, 1);
+    background: #1f1d1a; border: 1px solid var(--linha2); border-radius: 99px; padding: 1.6vh 2.4vw; display: flex; align-items: center; gap: 1vw;
+    font-size: 1.35vw; box-shadow: 0 2vh 4vh rgba(0, 0, 0, .5); }
+  #toast.on { transform: translate(-50%, 0); }
+  #toast b { font-weight: 500; }
+
+  /* ================= FOCO ================= */
+  #foco { background: #100f0d; display: grid; grid-template-columns: 1fr 1fr; align-items: center; padding: 0 7vw; }
+  .f-anel { width: 40vw; height: 40vw; }
+  .f-texto .olho { color: var(--ouro); font-size: 1.2vw; }
+  .f-tempo { font-family: var(--serif); font-weight: 300; font-size: 9vw; line-height: 1; margin-top: 1.6vh; }
+  .f-dica { font-size: 1.35vw; color: var(--suave); margin-top: 2vh; line-height: 1.6; max-width: 30vw; }
+  .f-botoes { display: flex; gap: 1vw; margin-top: 5vh; }
+  .f-botoes button { font-size: 1.4vw; font-weight: 500; padding: 1.8vh 2.6vw; border-radius: 99px; border: 1px solid var(--linha2); }
+
+  /* ================= FOLHAS (escolher foco, remédios) ================= */
+  .folha { position: fixed; inset: 0; z-index: 30; background: rgba(8, 8, 7, .78); display: none; align-items: center; justify-content: center; }
+  .folha.on { display: flex; }
+  .folha-caixa { width: 66vw; max-height: 86vh; overflow: auto; background: #1b1a17; border: 1px solid var(--linha2); border-radius: 1.6vw; padding: 4vh 3.4vw; }
+  .folha h2 { font-family: var(--serif); font-weight: 400; font-size: 3vw; }
+  .folha p { font-size: 1.15vw; color: var(--suave); margin-top: 1vh; line-height: 1.5; }
+  .opcoes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2vw; margin-top: 3vh; }
+  .opcoes button { border: 1px solid var(--linha2); border-radius: 1.2vw; padding: 3.4vh 0; font-family: var(--serif); font-size: 4vw; }
+  .opcoes button small { display: block; font-family: var(--sans); font-size: 1vw; color: var(--suave); letter-spacing: .14em; text-transform: uppercase; margin-top: .6vh; }
+  .rem-ed { margin-top: 2.6vh; display: grid; gap: 1vh; }
+  .rem-ed .linha { display: grid; grid-template-columns: 1.5fr 1fr 1.2fr 3vw; gap: .8vw; }
+  .rem-ed input { font: inherit; font-size: 1.3vw; color: var(--tinta); background: #12110f; border: 1px solid var(--linha2); border-radius: .7vw; padding: 1.3vh .9vw; width: 100%; }
+  .rem-ed .rotulos { display: grid; grid-template-columns: 1.5fr 1fr 1.2fr 3vw; gap: .8vw; font-size: .9vw; letter-spacing: .14em; text-transform: uppercase; color: var(--apagado); }
+  .rem-ed .x { font-size: 1.8vw; color: var(--apagado); }
+  .folha-botoes { display: flex; gap: 1vw; margin-top: 3.4vh; }
+  .folha-botoes button { font-size: 1.25vw; font-weight: 500; padding: 1.5vh 2vw; border-radius: 99px; border: 1px solid var(--linha2); }
+  .folha-botoes button.pri { background: var(--tinta); color: #12110f; border-color: var(--tinta); }
+  .folha-botoes .dir { margin-left: auto; }
+
+  #veu { position: fixed; inset: 0; z-index: 40; background: #000; pointer-events: none; opacity: 0; transition: opacity 1.6s ease; }
+  #tocar { position: fixed; z-index: 35; left: 50%; bottom: 10vh; transform: translateX(-50%); display: none;
+    font-size: 1.5vw; font-weight: 500; padding: 2vh 3vw; border-radius: 99px; background: var(--tinta); color: #12110f; }
+  #tocar.on { display: block; }
+  #config { position: fixed; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center; background: var(--parede); }
+  #config.on { display: flex; }
+  #config div { width: 60vw; font-size: 1.5vw; line-height: 1.6; color: var(--suave); }
+  #config input { width: 100%; margin: 1vh 0 2vh; padding: 1.4vh 1vw; font: inherit; color: var(--tinta); background: #1b1a17; border: 1px solid var(--linha2); border-radius: .8vw; }
+  #config button { padding: 1.4vh 2vw; border-radius: 99px; background: var(--tinta); color: #12110f; }
+</style>
+</head>
+<body class="m-quadro">
+<canvas id="ceu"></canvas>
+
+<!-- QUADRO -->
+<section class="tela" id="quadro">
+  <div class="parede"><figure class="moldura" id="moldura"><img id="obra" alt=""></figure></div>
+  <footer class="etiqueta">
+    <div>
+      <div class="q-hora num" id="qHora">--:--</div>
+      <div class="q-data" id="qData"></div>
+    </div>
+    <div class="q-obra" id="qObra"></div>
+    <div class="q-prox" id="qProx"></div>
+  </footer>
+</section>
+
+<!-- PAINEL -->
+<main class="tela" id="painel">
+  <header class="p-topo">
+    <div class="p-data" id="pData"></div>
+    <div class="p-clima" id="pClima"></div>
+  </header>
+  <div class="p-meio">
+    <section class="col">
+      <div class="p-hora num" id="pHora">--:--</div>
+      <div class="agora" id="agora"></div>
+      <div class="rem">
+        <div class="olho">Medicamentos de hoje</div>
+        <ul class="rem-lista" id="remLista"></ul>
+      </div>
+    </section>
+    <section class="col">
+      <nav class="abas">
+        <button class="on" data-vista="vHoje">Hoje</button>
+        <button data-vista="vSemana">Semana</button>
+      </nav>
+      <div class="vista on" id="vHoje">
+        <div class="dia-todo" id="diaTodo"></div>
+        <ul class="agenda" id="agenda"></ul>
+        <div class="bloco" id="blocoPrazos">
+          <div class="olho">Provas e prazos</div>
+          <ul class="prazos" id="prazos"></ul>
+        </div>
+        <div class="amanha-linha" id="amanha"></div>
+      </div>
+      <div class="vista" id="vSemana"><div class="semana" id="semana"></div></div>
+    </section>
+  </div>
+  <footer class="p-rodape">
+    <button class="pri" id="bFalar">Ouvir o dia</button>
+    <button id="bFoco">Modo foco</button>
+    <button id="bRem">Remédios</button>
+    <button id="bAtualizar">Atualizar</button>
+    <span class="status" id="status"></span>
+  </footer>
+</main>
+
+<!-- NOITE -->
+<section class="tela" id="noite">
+  <div class="n-hora num" id="nHora">--:--</div>
+  <div class="n-linha" id="nLinha"></div>
+</section>
+
+<!-- FOCO -->
+<section class="tela" id="foco">
+  <svg class="f-anel" id="fAnel" viewBox="0 0 100 100"></svg>
+  <div class="f-texto">
+    <div class="olho">Modo foco</div>
+    <div class="f-tempo num" id="fTempo">25:00</div>
+    <div class="f-dica" id="fDica">Uma coisa só. Celular longe. Quando o disco acabar, pausa de 5 minutos.</div>
+    <div class="f-botoes">
+      <button id="fPausar">Pausar</button>
+      <button id="fEncerrar">Encerrar</button>
+    </div>
+  </div>
+</section>
+
+<!-- ALERTA -->
+<section id="alerta">
+  <div class="al-faixa" id="alFaixa"></div>
+  <div class="al-texto">
+    <div class="olho" id="alOlho"></div>
+    <h1 class="al-titulo" id="alTitulo"></h1>
+    <div class="al-det" id="alDet"></div>
+    <div class="al-levar" id="alLevar"><div class="olho">Antes de sair, confira</div><div class="chips" id="alChips"></div></div>
+    <div class="al-botoes">
+      <button class="pri" id="alSim"></button>
+      <button id="alDepois"></button>
+    </div>
+  </div>
+  <div class="al-lado">
+    <svg class="al-anel" id="alAnel" viewBox="0 0 100 100"></svg>
+    <div class="al-cont num" id="alCont"></div>
+    <div class="al-sub" id="alSub"></div>
+  </div>
+</section>
+
+<div id="toast"><span class="ponto" id="toastPonto"></span><span id="toastTxt"></span></div>
+
+<div class="folha" id="folhaFoco"><div class="folha-caixa">
+  <h2>Quanto tempo de foco?</h2>
+  <p>O disco vai diminuindo como um relógio de cozinha. Quando acabar, o painel avisa e sugere uma pausa.</p>
+  <div class="opcoes">
+    <button data-min="15">15<small>minutos</small></button>
+    <button data-min="25">25<small>minutos</small></button>
+    <button data-min="45">45<small>minutos</small></button>
+  </div>
+  <div class="folha-botoes"><button class="dir" data-fechar>Cancelar</button></div>
+</div></div>
+
+<div class="folha" id="folhaRem"><div class="folha-caixa">
+  <h2>Medicamentos</h2>
+  <p>Escreva o nome, a dose e os horários separados por vírgula (ex.: 08:00, 20:00). Na hora certa o painel avisa, fala e insiste até você tocar em “Tomei”.</p>
+  <div class="rem-ed" id="remEd">
+    <div class="rotulos"><span>Nome</span><span>Dose</span><span>Horários</span><span></span></div>
+  </div>
+  <div class="folha-botoes">
+    <button id="remAdd">+ Adicionar</button>
+    <button class="dir" data-fechar>Cancelar</button>
+    <button class="pri" id="remSalvar">Salvar</button>
+  </div>
+</div></div>
+
+<button id="tocar">Toque para ouvir</button>
+<div id="veu"></div>
+
+<div id="config"><div>
+  Cole o endereço do app da Web (termina em <b>/exec</b>) e a chave do tablet.
+  <input id="cfgApi" placeholder="https://script.google.com/macros/s/…/exec">
+  <input id="cfgK" placeholder="chave do tablet">
+  <button id="cfgOk">Salvar</button>
+</div></div>
+
+<script>
+/* =========================================================
+   CONFIGURAÇÃO
+   ========================================================= */
+var TPL = { k: '<?!= k ?>', acordar: '<?!= horaAcordar ?>', noite: '<?!= horaDormir ?>' };
+var ABRE = '<' + '?';
+function tplOk(v) { return v && v.indexOf(ABRE) !== 0; }
+var memoria = {};
+function ler(c) { try { var v = localStorage.getItem(c); if (v !== null) return v; } catch (e) {} return memoria[c] || null; }
+function guardar(c, v) { memoria[c] = v; try { localStorage.setItem(c, v); } catch (e) {} }
+
+var params = {};
+location.search.replace(/^\?/, '').split('&').forEach(function (p) {
+  if (!p) return; var i = p.indexOf('=');
+  params[decodeURIComponent(i < 0 ? p : p.slice(0, i))] = i < 0 ? '' : decodeURIComponent(p.slice(i + 1));
+});
+var MODO_GAS = typeof google !== 'undefined' && google.script && google.script.run;
+var CFG = {
+  api: params.api || ler('api'),
+  k: tplOk(TPL.k) ? TPL.k : (params.k || ler('k')),
+  acordar: tplOk(TPL.acordar) ? TPL.acordar : (ler('acordar') || '07:00'),
+  noite: tplOk(TPL.noite) ? TPL.noite : (ler('noite') || '19:00'),
+  ociosoMin: 3
+};
+if (params.api) guardar('api', params.api);
+if (params.k) guardar('k', params.k);
+if ((params.api || params.k) && !MODO_GAS && history.replaceState) { try { history.replaceState(null, '', location.pathname); } catch (e) {} }
+
+/* =========================================================
+   OBRAS (domínio público · The Metropolitan Museum of Art)
+   ========================================================= */
+var OBRAS = [
+  ['DP-42549-001', 'Campo de trigo com ciprestes', 'Vincent van Gogh', '1889'],
+  ['DT1859', 'Colina de Jalais, Pontoise', 'Camille Pissarro', '1867'],
+  ['DP346474', 'Íris', 'Vincent van Gogh', '1890'],
+  ['DP145911', 'Campos de trigo', 'Jacob van Ruisdael', 'c. 1670'],
+  ['DT47', 'Natureza-morta com maçãs e prímulas', 'Paul Cézanne', 'c. 1890'],
+  ['DP119115', 'Os ceifeiros', 'Pieter Bruegel, o Velho', '1565'],
+  ['DP259921', 'Estudo para “Uma tarde de domingo na Grande Jatte”', 'Georges Seurat', '1884'],
+  ['DP124093', 'Medas de feno: outono', 'Jean-François Millet', 'c. 1874'],
+  ['DT50', 'A refeição do leão', 'Henri Rousseau', 'c. 1907'],
+  ['DT1570', 'A merenda', 'Luis Meléndez', 'c. 1772'],
+  ['DP-13360-001', 'Baleeiros', 'J. M. W. Turner', 'c. 1845'],
+  ['DT2013', 'Agar no deserto', 'Camille Corot', '1835'],
+  ['DP226145', 'As troianas incendeiam a frota', 'Claude Lorrain', 'c. 1643']
+];
+var OBRAS_TARDE = [
+  ['DP-31520-001', 'A floresta no inverno ao pôr do sol', 'Théodore Rousseau', 'c. 1846–67'],
+  ['DP-31997-001-NEW', 'Dois homens contemplando a lua', 'Caspar David Friedrich', 'c. 1825–30'],
+  ['DP322015', 'O túmulo de Virgílio ao luar', 'Joseph Wright of Derby', '1779']
+];
+function urlObra(f) { return 'https://wsrv.nl/?url=images.metmuseum.org/CRDImages/ep/original/' + f + '.jpg&w=1800&q=82'; }
+
+/* =========================================================
+   UTIL
+   ========================================================= */
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function dois(n) { return (n < 10 ? '0' : '') + n; }
+function hhmm(t) { var d = new Date(t); return dois(d.getHours()) + ':' + dois(d.getMinutes()); }
+function hojeStr() { var d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+function minDia(s) { var p = String(s).split(':'); return (+p[0]) * 60 + (+p[1] || 0); }
+function agoraMin() { var d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
+function semEmoji(s) { return String(s || '').replace(/^[^\p{L}\p{N}]+/u, '').replace(/\s*[—–-]\s*$/, ''); }
+function status(t) { $('status').textContent = t || ''; }
+function falta(ms) {
+  var m = Math.max(0, Math.round(ms / 60000));
+  if (m < 1) return 'agora';
+  if (m < 60) return m + ' min';
+  return Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + dois(m % 60) : '');
+}
+function localCurto(l) { return String(l || '').replace('CSA · Pavilhão, ', 'CSA · '); }
+function primeiroNome(p) { return String(p || '').split(' ')[0]; }
+var DSEM = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+var MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+function dataLonga(d) { return DSEM[d.getDay()] + (d.getDay() > 0 && d.getDay() < 6 ? '-feira' : '') + ', ' + d.getDate() + ' de ' + MESES[d.getMonth()]; }
+
+/* anel estilo "Time Timer": setor colorido = tempo que falta (até 60 min) */
+function anel(svg, fr, cor, opc) {
+  opc = opc || {};
+  fr = Math.max(0, Math.min(1, fr));
+  var h = '<circle cx="50" cy="50" r="47" fill="none" stroke="rgba(236,230,219,.14)" stroke-width="1"/>';
+  for (var i = 0; i < 12; i++) {
+    var a = i / 12 * 2 * Math.PI, r1 = i % 3 ? 44.5 : 42.5;
+    h += '<line x1="' + (50 + 46 * Math.sin(a)) + '" y1="' + (50 - 46 * Math.cos(a)) + '" x2="' + (50 + r1 * Math.sin(a)) + '" y2="' + (50 - r1 * Math.cos(a)) +
+      '" stroke="rgba(236,230,219,.28)" stroke-width="' + (i % 3 ? .5 : .9) + '"/>';
+  }
+  if (fr >= .999) h += '<circle cx="50" cy="50" r="40" fill="' + cor + '" opacity=".88"/>';
+  else if (fr > 0) {
+    var ang = fr * 2 * Math.PI, x = 50 - 40 * Math.sin(ang), y = 50 - 40 * Math.cos(ang);
+    // sentido anti-horário a partir do 12, como o Time Timer
+    h += '<path d="M50 50 L50 10 A40 40 0 ' + (fr > .5 ? 1 : 0) + ' 0 ' + x + ' ' + y + ' Z" fill="' + cor + '" opacity=".88"/>';
+  }
+  h += '<circle cx="50" cy="50" r="2.4" fill="#12110f" stroke="rgba(236,230,219,.5)" stroke-width=".6"/>';
+  svg.innerHTML = h;
+}
+
+/* =========================================================
+   DADOS
+   ========================================================= */
+var dados = null;
+function api(acao, p) {
+  return new Promise(function (ok, falha) {
+    if (MODO_GAS) {
+      google.script.run.withSuccessHandler(ok).withFailureHandler(falha).apiTablet(CFG.k, acao || '', p || {});
+      return;
+    }
+    if (!CFG.api || !CFG.k) { $('config').classList.add('on'); return falha(new Error('sem configuração')); }
+    var url = CFG.api + (CFG.api.indexOf('?') >= 0 ? '&' : '?') + 'formato=json&k=' + encodeURIComponent(CFG.k) +
+      (acao ? '&acao=' + encodeURIComponent(acao) : '') + (p ? '&p=' + encodeURIComponent(JSON.stringify(p)) : '');
+    fetch(url).then(function (r) { return r.json(); }).then(function (j) { if (j && j.erro) falha(new Error(j.erro)); else ok(j); }, falha);
+  });
+}
+function carregar(acao, p) {
+  return api(acao, p).then(function (d) {
+    dados = d;
+    if (!tplOk(TPL.acordar) && d.horaAcordar) { CFG.acordar = d.horaAcordar; guardar('acordar', d.horaAcordar); }
+    var hn = d.horaNoite || d.horaDormir;
+    if (!tplOk(TPL.noite) && hn) { CFG.noite = hn; guardar('noite', hn); }
+    guardar('cache', JSON.stringify(d));
+    render();
+    status('atualizado ' + hhmm(Date.now()));
+    return d;
+  }, function (e) {
+    status('sem conexão');
+    if (dados) return dados;
+    throw e;
+  });
+}
+try { var c0 = ler('cache'); if (c0) { dados = JSON.parse(c0); } } catch (e) {}
+
+/* =========================================================
+   LÓGICA DO DIA (aulas, saída, remédios)
+   ========================================================= */
+function aulasValidas() { return ((dados && dados.aulasHoje) || []).filter(function (a) { return a.status !== 'cancelada'; }); }
+
+function situacao() {
+  var t = Date.now(), aulas = aulasValidas();
+  var em = aulas.filter(function (a) { return a.ini <= t && t < a.fim; })[0];
+  if (em) return { tipo: 'emaula', a: em };
+  var px = aulas.filter(function (a) { return a.ini > t; })[0];
+  if (px) {
+    if (!px.alertaSaida) return { tipo: 'proxima', a: px };
+    return t < px.saida ? { tipo: 'sairem', a: px } : { tipo: 'saiaagora', a: px };
+  }
+  var am = ((dados && dados.aulasAmanha) || []).filter(function (a) { return a.status !== 'cancelada'; })[0];
+  return { tipo: 'livre', amanha: am };
+}
+
+function remediosHoje() { return (dados && dados.remedios && dados.remedios.hoje) || []; }
+
+/* =========================================================
+   RENDER
+   ========================================================= */
+function render() {
+  if (!dados) return;
+  var c = dados.clima;
+  $('pClima').innerHTML = c ? '<b>' + c.agora + '°</b>&nbsp; ' + esc(c.descricao) + ' &nbsp;·&nbsp; máx ' + c.max + '° mín ' + c.min + '°' +
+    (c.chuva >= 30 ? ' &nbsp;·&nbsp; chuva ' + c.chuva + '%' : '') : '';
+  renderAgenda();
+  renderPrazos();
+  renderRemedios();
+  renderSemana();
+  renderTempo();
+}
+
+function renderTempo() {   // o que depende do relógio: roda a cada 20 s
+  if (!dados) return;
+  renderAgora();
+  renderQuadroProx();
+  renderNoiteLinha();
+  marcarAgenda();
+}
+
+function renderAgora() {
+  var s = situacao(), t = Date.now(), el = $('agora'), h = '', fr = 0, cor = '#c4a878', cls = 'agora';
+  if (s.tipo === 'emaula') {
+    var a = s.a; cor = a.cor; fr = (a.fim - t) / 3600000;
+    h = '<div class="olho">Em aula agora</div>' + corpo('termina em ' + falta(a.fim - t), a.nome, a.hIni + '–' + a.hFim + ' · ' + esc(localCurto(a.local)));
+  } else if (s.tipo === 'sairem') {
+    var b = s.a; cor = b.cor; fr = (b.saida - t) / 3600000;
+    if (b.saida - t < 15 * 60000) cls += ' urgente';
+    h = '<div class="olho">Sair de casa em</div>' + corpo(falta(b.saida - t), b.nome,
+      'sair às <b>' + hhmm(b.saida) + '</b> · aula às ' + b.hIni + '<br>' + esc(localCurto(b.local)));
+  } else if (s.tipo === 'saiaagora') {
+    var d = s.a; cor = '#d97a6c'; fr = (d.ini - t) / 3600000; cls += ' urgente';
+    h = '<div class="olho">Saia agora</div>' + corpo('aula em ' + falta(d.ini - t), d.nome, 'começa às ' + d.hIni + ' · ' + esc(localCurto(d.local)));
+  } else if (s.tipo === 'proxima') {
+    var e = s.a; cor = e.cor; fr = (e.ini - t) / 3600000;
+    h = '<div class="olho">Próxima aula</div>' + corpo('em ' + falta(e.ini - t), e.nome, e.hIni + ' · ' + esc(localCurto(e.local)));
+  } else {
+    var am = s.amanha;
+    h = '<div class="olho">Aulas de hoje</div>' + corpo('Livre', aulasHojeTodas().length ? 'Aulas de hoje concluídas' : 'Sem aula hoje',
+      am ? 'Amanhã: <b>' + esc(am.nome) + '</b> às ' + am.hIni + (am.alertaSaida ? ' · sair ' + hhmm(am.saida) : '') : 'Amanhã também sem aula');
+  }
+  var aviso = s.a && s.a.status === 'aviso' ? '<div class="aviso-aula">' + esc(s.a.nota) + '</div>' : '';
+  el.className = cls;
+  el.innerHTML = h + aviso;
+  var svg = el.querySelector('svg');
+  if (svg) anel(svg, fr, cor);
+  function corpo(grande, nome, det) {
+    return '<div class="agora-corpo"><svg class="anel" viewBox="0 0 100 100"></svg><div>' +
+      '<div class="a-grande">' + esc(grande) + '</div><div class="a-nome">' + esc(nome) + '</div><div class="a-det">' + det + '</div></div></div>';
+  }
+}
+function aulasHojeTodas() { return (dados && dados.aulasHoje) || []; }
+
+function itensHoje() {
+  var t = Date.now(), itens = [];
+  aulasHojeTodas().forEach(function (a) {
+    itens.push({ ini: a.ini, fim: a.fim, titulo: a.nome, meta: localCurto(a.local) + ' · Prof. ' + primeiroNome(a.prof), cor: a.cor, aula: a });
+  });
+  ((dados && dados.hoje) || []).forEach(function (e) {
+    if (e.diaInteiro || e.tipo) return;
+    itens.push({ ini: e.inicio, fim: e.fim, titulo: semEmoji(e.titulo), meta: e.local || e.agenda, cor: '#8a8478' });
+  });
+  return itens.sort(function (a, b) { return a.ini - b.ini; });
+}
+
+function renderAgenda() {
+  var tod = ((dados && dados.hoje) || []).filter(function (e) { return e.diaInteiro; });
+  $('diaTodo').innerHTML = tod.map(function (e) { return '<span>' + esc(semEmoji(e.titulo)) + '</span>'; }).join('');
+  var itens = itensHoje();
+  $('agenda').innerHTML = itens.length ? itens.map(function (it, i) {
+    return '<li data-i="' + i + '" style="--c:' + it.cor + '"><div class="t num"><b>' + hhmm(it.ini) + '</b>' + hhmm(it.fim) + '</div><span class="barra"></span>' +
+      '<div><div class="ti">' + esc(it.titulo) + '</div><div class="me">' + esc(it.meta) + '</div></div><div class="st"></div></li>';
+  }).join('') : '<li style="display:block" class="vazio">Nada marcado para hoje.</li>';
+  marcarAgenda();
+}
+
+function marcarAgenda() {
+  var t = Date.now(), itens = itensHoje();
+  [].forEach.call($('agenda').querySelectorAll('li[data-i]'), function (li) {
+    var it = itens[+li.getAttribute('data-i')]; if (!it) return;
+    var st = '', cls = '';
+    if (it.aula && it.aula.status === 'cancelada') { cls = 'cancelada'; st = 'Cancelada'; }
+    else if (it.fim <= t) { cls = 'passou'; st = 'Concluída'; }
+    else if (it.ini <= t) { cls = 'agora'; st = 'Agora'; }
+    else if (it.aula && it.aula.alertaSaida && it.aula.saida - t < 90 * 60000) { cls = 'sair'; st = 'Sair ' + hhmm(it.aula.saida); }
+    else if (it.aula && it.aula.status === 'aviso') { cls = 'aviso'; st = 'Confirmar'; }
+    li.className = cls;
+    li.querySelector('.st').textContent = st;
+  });
+}
+
+function renderPrazos() {
+  var f = ((dados && dados.faculdade) || []).filter(function (e) { return e.tipo !== 'sem_aula'; });
+  var nomes = { prova: 'Prova', entrega: 'Entrega', reposicao: 'Aula extra', sem_aula: 'Sem aula' };
+  $('blocoPrazos').style.display = f.length ? '' : 'none';
+  $('prazos').innerHTML = f.slice(0, 3).map(function (e) {
+    return '<li><span class="d num">' + esc(e.dia) + (e.hora ? ' · ' + esc(e.hora) : '') + '</span><span class="tg ' + esc(e.tipo) + '">' + nomes[e.tipo] + '</span><span>' + esc(semEmoji(e.resto)) + '</span></li>';
+  }).join('');
+  var am = ((dados && dados.aulasAmanha) || []).filter(function (a) { return a.status !== 'cancelada'; });
+  $('amanha').innerHTML = am.length
+    ? 'Amanhã: <b>' + am.map(function (a) { return esc(a.curto) + ' ' + a.hIni; }).join('</b> · <b>') + '</b>' + (am[0].alertaSaida ? ' &nbsp;—&nbsp; sair de casa às <b>' + hhmm(am[0].saida) + '</b>' : '')
+    : 'Amanhã: sem aula.';
+}
+
+function renderRemedios() {
+  var r = remediosHoje(), t = Date.now();
+  $('remLista').innerHTML = r.length ? r.map(function (x, i) {
+    var cls = x.tomado ? 'feito' : (x.ms <= t ? 'atrasado' : '');
+    return '<li class="' + cls + '"><span class="h num">' + x.hora + '</span><span class="n">' + esc(x.nome) + (x.dose ? '<small>' + esc(x.dose) + '</small>' : '') + '</span>' +
+      '<button class="marcar" data-r="' + i + '" aria-label="Marcar como tomado"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button></li>';
+  }).join('') : '<li class="vazio" style="display:block">Nenhum remédio cadastrado. Toque em “Remédios” para adicionar os seus.</li>';
+}
+
+function renderSemana() {
+  var g = (dados && dados.grade) || [], el = $('semana'), hoje = new Date().getDay();
+  var INI = 7 * 60 + 30, FIM = 23 * 60, tot = FIM - INI;
+  function top(min) { return ((min - INI) / tot * 100) + '%'; }
+  var h = '<div class="sem-cab"></div>';
+  for (var d = 1; d <= 5; d++) h += '<div class="sem-cab' + (d === hoje ? ' hoje' : '') + '">' + DSEM[d].slice(0, 3) + '</div>';
+  h += '<div class="sem-reg">';
+  for (var hr = 8; hr <= 22; hr += 2) h += '<span class="num" style="top:' + top(hr * 60) + '">' + dois(hr) + 'h</span>';
+  h += '</div>';
+  for (var dd = 1; dd <= 5; dd++) {
+    h += '<div class="sem-col' + (dd === hoje ? ' hoje' : '') + '">';
+    for (var l = 8; l <= 22; l += 2) h += '<div class="sem-linha" style="top:' + top(l * 60) + '"></div>';
+    g.forEach(function (a) {
+      a.horarios.forEach(function (x) {
+        if (x.dia !== dd) return;
+        var i0 = minDia(x.ini), i1 = minDia(x.fim);
+        h += '<div class="sem-aula" style="--c:' + a.cor + ';top:' + top(i0) + ';height:' + ((i1 - i0) / tot * 100) + '%"><b>' + esc(a.curto) + '</b><span class="num">' + x.ini + '–' + x.fim + '</span><span>' + esc(a.local.replace('CSA · Pavilhão, ', '').replace('DCNAT · ', '')) + '</span></div>';
+      });
+    });
+    if (dd === hoje) { var m = agoraMin(); if (m > INI && m < FIM) h += '<div class="sem-agora" style="top:' + top(m) + '"></div>'; }
+    h += '</div>';
+  }
+  el.innerHTML = h;
+}
+
+function renderQuadroProx() {
+  var s = situacao(), t = Date.now(), el = $('qProx'), urg = false, h = '';
+  var r = remediosHoje().filter(function (x) { return !x.tomado && x.ms > t - 4 * 3600000; })[0];
+  if (s.tipo === 'emaula') h = olho('Em aula', s.a.cor) + '<div class="nome">' + esc(s.a.nome) + '</div><div class="det num">até ' + s.a.hFim + '</div>';
+  else if (s.tipo === 'sairem' || s.tipo === 'saiaagora') {
+    urg = s.a.saida - t < 15 * 60000;
+    h = olho('Próxima aula', s.a.cor) + '<div class="nome">' + esc(s.a.nome) + '</div><div class="det num">' + s.a.hIni + ' · <b>sair ' +
+      (s.tipo === 'saiaagora' ? 'agora' : 'às ' + hhmm(s.a.saida) + ' (em ' + falta(s.a.saida - t) + ')') + '</b></div>';
+  } else if (s.tipo === 'proxima') h = olho('Próxima aula', s.a.cor) + '<div class="nome">' + esc(s.a.nome) + '</div><div class="det num">' + s.a.hIni + ' · em ' + falta(s.a.ini - t) + '</div>';
+  else if (r) h = olho('Medicamento', '#c4a878') + '<div class="nome">' + esc(r.nome) + '</div><div class="det num">' + r.hora + (r.ms <= t ? ' · <b>pendente</b>' : '') + '</div>';
+  else if (s.amanha) h = olho('Amanhã', s.amanha.cor) + '<div class="nome">' + esc(s.amanha.nome) + '</div><div class="det num">' + s.amanha.hIni + '</div>';
+  el.className = 'q-prox' + (urg ? ' urgente' : '');
+  el.innerHTML = h;
+  function olho(t2, cor) { return '<div class="olho"><span class="ponto" style="--c:' + cor + '"></span>' + t2 + '</div>'; }
+}
+
+function renderNoiteLinha() {
+  var s = situacao(), t = Date.now(), el = $('nLinha'), txt = '', imp = false;
+  var r = remediosHoje().filter(function (x) { return !x.tomado && x.ms > t - 4 * 3600000; })[0];
+  if (s.tipo === 'emaula') txt = 'Em aula · <b>' + esc(s.a.curto) + '</b> até ' + s.a.hFim;
+  else if (s.tipo === 'sairem' || s.tipo === 'saiaagora' || s.tipo === 'proxima') { txt = 'Hoje · <b>' + esc(s.a.curto) + '</b> às ' + s.a.hIni + (s.a.alertaSaida ? ' · sair ' + hhmm(s.a.saida) : ''); imp = true; }
+  else if (s.amanha) txt = 'Amanhã · <b>' + esc(s.amanha.curto) + '</b> às ' + s.amanha.hIni + (s.amanha.alertaSaida ? ' · sair ' + hhmm(s.amanha.saida) : '');
+  else txt = 'Amanhã sem aula';
+  if (r) { txt += ' &nbsp;·&nbsp; remédio <b>' + esc(r.nome) + '</b> ' + r.hora; imp = imp || r.ms - t < 3600000; }
+  el.innerHTML = txt;
+  el.className = 'n-linha' + (imp ? ' importante' : '');
+}
+
+/* =========================================================
+   QUADROS
+   ========================================================= */
+var obraAtual = null;
+function escolherObra() {
+  var m = agoraMin(), lista = (m >= 17 * 60) ? OBRAS_TARDE : OBRAS;
+  var dia = Math.floor(Date.now() / 86400000);
+  return lista[(Math.floor(m / 20) + dia * 7) % lista.length];
+}
+function trocarObra(forcar) {
+  var o = escolherObra();
+  if (!forcar && obraAtual && obraAtual[0] === o[0]) return;
+  var img = new Image(), mold = $('moldura');
+  img.onload = function () {
+    mold.classList.add('saindo');
+    setTimeout(function () {
+      $('obra').src = img.src;
+      $('qObra').innerHTML = '<i>' + esc(o[1]) + '</i><span>' + esc(o[2]) + ', ' + esc(o[3]) + '</span><small>The Metropolitan Museum of Art, Nova York</small>';
+      mold.classList.remove('saindo');
+    }, obraAtual ? 1400 : 0);
+    obraAtual = o;
+  };
+  img.onerror = function () { obraAtual = o; };   // tenta a próxima no próximo ciclo
+  img.src = urlObra(o[0]);
+}
+
+/* =========================================================
+   VOZ E SOM
+   ========================================================= */
+function temFully() { try { return typeof fully !== 'undefined' && !!fully.textToSpeech; } catch (e) { return false; } }
+var falas = [], timerVoz = null, vozLiberada = false, falaPendente = null, audioCtx = null;
+function vozPt() {
+  var v = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
+  return v.filter(function (x) { return /pt[-_]BR/i.test(x.lang) && /google/i.test(x.name); })[0] ||
+    v.filter(function (x) { return /pt[-_]BR/i.test(x.lang); })[0] || v.filter(function (x) { return /^pt/i.test(x.lang); })[0] || null;
+}
+function liberarVoz() {
+  try { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {}
+  if (vozLiberada || !window.speechSynthesis) return;
+  try { var u = new SpeechSynthesisUtterance(' '); u.volume = 0; u.lang = 'pt-BR'; speechSynthesis.speak(u); vozLiberada = true; } catch (e) {}
+}
+function fimFala() { document.body.classList.remove('falando'); clearTimeout(timerVoz); }
+function semVoz(motivo) {
+  fimFala();
+  if (motivo === 'not-allowed') { $('tocar').classList.add('on'); status('toque na tela para liberar o som'); }
+  else status('sem voz em português — Configurações › Conversão de texto em voz');
+}
+function falar(texto) {
+  if (!texto) return;
+  parar();
+  $('tocar').classList.remove('on');
+  document.body.classList.add('falando');
+  if (temFully()) {
+    try { fully.textToSpeech(texto, 'pt_BR'); } catch (e) { try { fully.textToSpeech(texto); } catch (e2) {} }
+    timerVoz = setTimeout(fimFala, Math.min(120000, texto.length * 75));
+    return;
+  }
+  var s = window.speechSynthesis;
+  if (!s || typeof SpeechSynthesisUtterance === 'undefined') { semVoz('sem-suporte'); return; }
+  falaPendente = texto;
+  setTimeout(function () {
+    try { s.resume(); } catch (e) {}
+    var voz = vozPt(), comecou = false;
+    var frases = (texto.match(/[^.!?;]+[.!?;]*/g) || [texto]).map(function (f) { return f.trim(); }).filter(Boolean);
+    falas = [];
+    frases.forEach(function (f, i) {
+      var u = new SpeechSynthesisUtterance(f);
+      u.lang = 'pt-BR'; if (voz) u.voice = voz; u.rate = .98; u.volume = 1;
+      u.onstart = function () { comecou = true; falaPendente = null; };
+      u.onerror = function (ev) { if (ev.error !== 'interrupted' && ev.error !== 'canceled') semVoz(ev.error); };
+      if (i === frases.length - 1) u.onend = fimFala;
+      falas.push(u); s.speak(u);
+    });
+    timerVoz = setTimeout(function () { if (!comecou && !s.speaking) semVoz(vozLiberada ? 'sem-voz' : 'not-allowed'); }, 4000);
+  }, 300);
+}
+function parar() {
+  fimFala();
+  try { if (typeof fully !== 'undefined' && fully.stopTextToSpeech) fully.stopTextToSpeech(); } catch (e) {}
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+}
+// sino suave de dois tons (antes dos avisos)
+function sino(vezes) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    var t0 = audioCtx.currentTime;
+    for (var v = 0; v < (vezes || 1); v++) {
+      [[659.25, 0], [987.77, .28]].forEach(function (n) {
+        var o = audioCtx.createOscillator(), g = audioCtx.createGain(), st = t0 + v * .9 + n[1];
+        o.type = 'sine'; o.frequency.value = n[0];
+        g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(.32, st + .02); g.gain.exponentialRampToValueAtTime(.001, st + 1.6);
+        o.connect(g); g.connect(audioCtx.destination); o.start(st); o.stop(st + 1.7);
+      });
+    }
+  } catch (e) {}
+}
+function avisarFalando(texto, toques) { sino(toques || 1); setTimeout(function () { falar(texto); }, 1300 + ((toques || 1) - 1) * 900); }
+
+function horaFalada(t) {
+  var d = new Date(t), h = d.getHours(), m = d.getMinutes();
+  if (h === 12 && m === 0) return 'ao meio-dia';
+  if (h === 0 && m === 0) return 'à meia-noite';
+  var s = m === 0 ? h + (h === 1 ? ' hora' : ' horas') : h + ' e ' + m;
+  return (h === 1 ? 'à ' : 'às ') + s;
+}
+
+/* =========================================================
+   BRILHO
+   ========================================================= */
+function brilho(nivel, veu) {
+  var ok = false;
+  try { if (typeof fully !== 'undefined' && fully.setScreenBrightness) { fully.setScreenBrightness(nivel); ok = true; } } catch (e) {}
+  $('veu').style.opacity = ok ? 0 : (veu || 0);
+  mudouBrilhoEm = Date.now();
+}
+
+/* =========================================================
+   ALERTAS (sair de casa, remédios)
+   ========================================================= */
+var alertaAtual = null, repetirTimer = null, repeticoes = 0, chipsOk = {};
+function marcado(k) { return ler('ok:' + k) === '1'; }
+function marcar(k) { guardar('ok:' + k, '1'); }
+function adiadoAte(k) { return +(ler('adiar:' + k) || 0); }
+
+function verificarAlertas() {
+  if (!dados || alertaAtual) return;
+  var t = Date.now(), dia = hojeStr();
+  // 1) sair para a aula
+  aulasValidas().forEach(function (a) {
+    if (alertaAtual || !a.alertaSaida) return;
+    var k = 'sair:' + dia + ':' + a.cod + ':' + a.ini;
+    if (marcado(k)) return;
+    if (t >= a.saida && t < a.ini + 5 * 60000) { if (t >= adiadoAte(k)) abrirAlerta({ tipo: 'aula', k: k, a: a }); return; }
+    // avisos antes: 60 e 15 minutos antes da hora de sair
+    [60, 15].forEach(function (m) {
+      var kp = 'pre' + m + ':' + k, alvo = a.saida - m * 60000;
+      if (t >= alvo && t < alvo + 5 * 60000 && !marcado(kp) && !(m === 60 && ehNoite() && agoraMin() < minDia(CFG.acordar))) {
+        marcar(kp);
+        toast('Em ' + m + ' min: sair para <b>' + esc(a.nome) + '</b>', a.cor);
+        avisarFalando(m === 60 ? CFGnome() + ', daqui a uma hora você sai para ' + a.nome + '.' :
+          CFGnome() + ', em 15 minutos você precisa sair para ' + a.nome + '. Comece a se arrumar.');
+      }
+    });
+  });
+  if (alertaAtual) return;
+  // 2) remédios
+  remediosHoje().forEach(function (r) {
+    if (alertaAtual || r.tomado) return;
+    var k = 'rem:' + dia + ':' + r.id + ':' + r.hora;
+    if (marcado(k)) return;
+    if (t >= r.ms && t < r.ms + 4 * 3600000 && t >= adiadoAte(k)) abrirAlerta({ tipo: 'remedio', k: k, r: r });
+  });
+}
+function CFGnome() { return (dados && dados.nome) || ''; }
+
+function abrirAlerta(al) {
+  alertaAtual = al; repeticoes = 0; chipsOk = {};
+  var b = document.body;
+  b.classList.add('alerta-on');
+  b.classList.toggle('noturno', ehNoite());
+  brilho(ehNoite() ? 70 : 220, ehNoite() ? .25 : 0);
+  if (al.tipo === 'aula') {
+    var a = al.a;
+    $('alerta').style.setProperty('--c', a.cor);
+    $('alOlho').textContent = 'Hora de sair';
+    $('alTitulo').textContent = a.nome;
+    $('alDet').innerHTML = 'Começa às <b>' + a.hIni + '</b> · ' + esc(a.local) + '<br>Prof. ' + esc(a.prof) + (a.status === 'aviso' ? '<br><span style="color:var(--ouro)">' + esc(a.nota) + '</span>' : '');
+    $('alLevar').style.display = '';
+    $('alChips').innerHTML = ((dados && dados.levar) || []).map(function (x, i) { return '<button data-c="' + i + '">' + esc(x) + '</button>'; }).join('');
+    $('alSim').textContent = 'Estou saindo';
+    $('alDepois').textContent = 'Mais 5 minutos';
+    $('alAnel').style.display = '';
+  } else {
+    var r = al.r;
+    $('alerta').style.setProperty('--c', '#c4a878');
+    $('alOlho').textContent = 'Medicamento · ' + r.hora;
+    $('alTitulo').textContent = r.nome;
+    $('alDet').innerHTML = (r.dose ? '<b>' + esc(r.dose) + '</b><br>' : '') + 'Tome agora e toque em “Tomei” para registrar.';
+    $('alLevar').style.display = 'none';
+    $('alSim').textContent = 'Tomei';
+    $('alDepois').textContent = 'Lembrar em 10 min';
+    $('alAnel').style.display = 'none';
+  }
+  atualizarAlerta();
+  falarAlerta();
+  clearInterval(repetirTimer);
+  repetirTimer = setInterval(function () {
+    repeticoes++;
+    if (repeticoes > (al.tipo === 'aula' ? 4 : 6)) { clearInterval(repetirTimer); return; }
+    falarAlerta();
+  }, (al.tipo === 'aula' ? 3 : 5) * 60000);
+}
+function falarAlerta() {
+  var al = alertaAtual; if (!al) return;
+  if (al.tipo === 'aula') {
+    var a = al.a, lv = ((dados && dados.levar) || []).slice(0, 3).join(', ').toLowerCase();
+    avisarFalando(CFGnome() + ', hora de sair. ' + a.nome + ' começa ' + horaFalada(a.ini) + ', na ' + (a.sala || a.local) + '.' + (lv ? ' Confira: ' + lv + '.' : ''), 2);
+  } else {
+    avisarFalando(CFGnome() + ', hora do remédio: ' + al.r.nome + (al.r.dose ? ', ' + al.r.dose : '') + '.', 2);
+  }
+}
+function atualizarAlerta() {
+  var al = alertaAtual; if (!al) return;
+  var t = Date.now();
+  if (al.tipo === 'aula') {
+    var ms = al.a.ini - t;
+    anel($('alAnel'), ms / 3600000, al.a.cor);
+    $('alCont').textContent = ms > 0 ? falta(ms) : 'agora';
+    $('alSub').textContent = ms > 0 ? 'para a aula começar' : 'a aula já começou';
+    if (t > al.a.ini + 10 * 60000) fecharAlerta(true);
+  } else {
+    $('alCont').textContent = hhmm(t);
+    $('alSub').textContent = t - al.r.ms > 60000 ? 'atrasado ' + falta(t - al.r.ms) : '';
+  }
+}
+function fecharAlerta(semMarcar) {
+  if (!alertaAtual) return;
+  if (!semMarcar) marcar(alertaAtual.k);
+  alertaAtual = null; clearInterval(repetirTimer); parar();
+  document.body.classList.remove('alerta-on');
+  ultimoMov = Date.now(); estado = null; decidir();
+}
+$('alSim').onclick = function () {
+  var al = alertaAtual; if (!al) return;
+  if (al.tipo === 'remedio') {
+    marcar(al.k);
+    al.r.tomado = Date.now(); renderRemedios();
+    carregar('tomei', { id: al.r.id, hora: al.r.hora });
+    falar('Registrado. Muito bem.');
+  } else falar('Boa aula!');
+  fecharAlerta();
+};
+$('alDepois').onclick = function () {
+  var al = alertaAtual; if (!al) return;
+  guardar('adiar:' + al.k, String(Date.now() + (al.tipo === 'aula' ? 5 : 10) * 60000));
+  fecharAlerta(true);
+};
+$('alChips').onclick = function (e) { var b = e.target.closest('button'); if (b) b.classList.toggle('ok'); };
+
+var toastTimer = null;
+function toast(html, cor) {
+  $('toastTxt').innerHTML = html; $('toastPonto').style.setProperty('--c', cor || '#c4a878');
+  $('toast').classList.add('on'); clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { $('toast').classList.remove('on'); }, 90000);
+}
+$('toast').onclick = function () { $('toast').classList.remove('on'); };
+
+/* =========================================================
+   MODO FOCO
+   ========================================================= */
+var foco = null;   // { fim, total, pausadoEm }
+function iniciarFoco(min) {
+  foco = { total: min * 60000, fim: Date.now() + min * 60000, pausa: false, pausadoRest: 0 };
+  $('fPausar').textContent = 'Pausar';
+  $('fDica').textContent = min >= 45 ? 'Uma coisa só. Celular longe. No fim, levante e descanse 10 minutos.' : 'Uma coisa só. Celular longe. Quando o disco acabar, pausa de 5 minutos.';
+  estado = null; decidir(); atualizarFoco();
+  falar('Foco de ' + min + ' minutos. Começando agora.');
+}
+function atualizarFoco() {
+  if (!foco) return;
+  var rest = foco.pausa ? foco.pausadoRest : foco.fim - Date.now();
+  if (rest <= 0) {
+    var tot = foco.total; foco = null; estado = null; decidir();
+    avisarFalando(tot >= 45 * 60000 ? 'Tempo de foco encerrado. Levante, beba água e descanse dez minutos.' : 'Tempo de foco encerrado. Faça uma pausa de cinco minutos.', 3);
+    return;
+  }
+  var s = Math.ceil(rest / 1000);
+  $('fTempo').textContent = dois(Math.floor(s / 60)) + ':' + dois(s % 60);
+  anel($('fAnel'), rest / 3600000, '#c4a878');
+}
+$('fPausar').onclick = function () {
+  if (!foco) return;
+  if (foco.pausa) { foco.fim = Date.now() + foco.pausadoRest; foco.pausa = false; this.textContent = 'Pausar'; }
+  else { foco.pausadoRest = foco.fim - Date.now(); foco.pausa = true; this.textContent = 'Continuar'; }
+};
+$('fEncerrar').onclick = function () { foco = null; ultimoMov = Date.now(); estado = null; ir('painel'); };
+
+/* =========================================================
+   FOLHAS
+   ========================================================= */
+[].forEach.call(document.querySelectorAll('[data-fechar]'), function (b) {
+  b.onclick = function () { b.closest('.folha').classList.remove('on'); };
+});
+$('bFoco').onclick = function () { $('folhaFoco').classList.add('on'); };
+[].forEach.call(document.querySelectorAll('#folhaFoco [data-min]'), function (b) {
+  b.onclick = function () { $('folhaFoco').classList.remove('on'); iniciarFoco(+b.getAttribute('data-min')); };
+});
+function linhaRem(r) {
+  var d = document.createElement('div'); d.className = 'linha';
+  d.innerHTML = '<input class="rn" placeholder="Ex.: nome do remédio" value="' + esc(r.nome || '') + '">' +
+    '<input class="rd" placeholder="Ex.: 1 comprimido" value="' + esc(r.dose || '') + '">' +
+    '<input class="rh" placeholder="08:00, 20:00" inputmode="numeric" value="' + esc((r.horas || []).join(', ')) + '">' +
+    '<button class="x" aria-label="Remover">×</button>';
+  d.setAttribute('data-id', r.id || '');
+  d.querySelector('.x').onclick = function () { d.remove(); };
+  return d;
+}
+$('bRem').onclick = function () {
+  var ed = $('remEd');
+  [].forEach.call(ed.querySelectorAll('.linha'), function (x) { x.remove(); });
+  var lista = (dados && dados.remedios && dados.remedios.lista) || [];
+  (lista.length ? lista : [{}]).forEach(function (r) { ed.appendChild(linhaRem(r)); });
+  $('folhaRem').classList.add('on');
+};
+$('remAdd').onclick = function () { $('remEd').appendChild(linhaRem({})); };
+$('remSalvar').onclick = function () {
+  var lista = [].map.call($('remEd').querySelectorAll('.linha'), function (l) {
+    return { id: l.getAttribute('data-id') || '', nome: l.querySelector('.rn').value, dose: l.querySelector('.rd').value, horas: l.querySelector('.rh').value };
+  }).filter(function (r) { return r.nome.trim(); });
+  status('salvando…');
+  carregar('remedios', { lista: lista }).then(function () { $('folhaRem').classList.remove('on'); status('remédios salvos'); },
+    function () { status('não consegui salvar — tente de novo'); });
+};
+$('remLista').onclick = function (e) {
+  var b = e.target.closest('[data-r]'); if (!b) return;
+  var r = remediosHoje()[+b.getAttribute('data-r')]; if (!r) return;
+  var acao = r.tomado ? 'desfazer' : 'tomei';
+  r.tomado = r.tomado ? null : Date.now(); renderRemedios();
+  if (acao === 'tomei') marcar('rem:' + hojeStr() + ':' + r.id + ':' + r.hora);
+  carregar(acao, { id: r.id, hora: r.hora });
+};
+[].forEach.call(document.querySelectorAll('.abas button'), function (b) {
+  b.onclick = function () {
+    [].forEach.call(document.querySelectorAll('.abas button'), function (x) { x.classList.toggle('on', x === b); });
+    [].forEach.call(document.querySelectorAll('.vista'), function (v) { v.classList.toggle('on', v.id === b.getAttribute('data-vista')); });
+    if (b.getAttribute('data-vista') === 'vSemana') renderSemana();
+  };
+});
+
+/* =========================================================
+   CÉU DA NOITE (estrelas e lua na fase real)
+   ========================================================= */
+var cv = $('ceu'), cx = cv.getContext('2d'), W = 0, H = 0, estrelas = [], cadente = null, brilhoNoite = 0;
+function tamanho() {
+  W = cv.width = innerWidth; H = cv.height = innerHeight; estrelas = [];
+  var n = Math.round(W * H / 20000);
+  for (var i = 0; i < n; i++) estrelas.push({ x: Math.random() * W, y: Math.random() * H * .75, r: Math.random() < .1 ? 1.2 : Math.random() * .7 + .3,
+    b: Math.random() * .3 + .1, v: Math.random() * .0012 + .0003, f: Math.random() * 6.28 });
+}
+function faseLua(d) { var c = 2551442.877, ref = Date.UTC(2000, 0, 6, 18, 14) / 1000, f = ((d.getTime() / 1000 - ref) % c) / c; return f < 0 ? f + 1 : f; }
+function lua(x, y, r, fase, a) {
+  var halo = cx.createRadialGradient(x, y, r * .9, x, y, r * 5);
+  halo.addColorStop(0, 'rgba(210,215,240,' + (.06 * a) + ')'); halo.addColorStop(1, 'rgba(210,215,240,0)');
+  cx.fillStyle = halo; cx.beginPath(); cx.arc(x, y, r * 5, 0, 6.2832); cx.fill();
+  cx.fillStyle = 'rgba(110,115,140,' + (.1 * a) + ')'; cx.beginPath(); cx.arc(x, y, r, 0, 6.2832); cx.fill();
+  var k = Math.cos(fase * 2 * Math.PI), lado = fase < .5 ? -1 : 1;   // hemisfério sul
+  cx.save(); cx.translate(x, y); cx.scale(lado, 1);
+  cx.beginPath(); cx.arc(0, 0, r, -Math.PI / 2, Math.PI / 2, false);
+  var rx = Math.max(.01, r * Math.abs(k));
+  if (k > 0) cx.ellipse(0, 0, rx, r, 0, Math.PI / 2, -Math.PI / 2, true); else cx.ellipse(0, 0, rx, r, 0, Math.PI / 2, Math.PI * 1.5, false);
+  cx.closePath();
+  var g = cx.createRadialGradient(-r * .3, -r * .3, r * .1, 0, 0, r);
+  g.addColorStop(0, 'rgba(246,242,230,' + (.88 * a) + ')'); g.addColorStop(1, 'rgba(212,206,190,' + (.72 * a) + ')');
+  cx.fillStyle = g; cx.fill(); cx.restore();
+}
+var desloc = { x: 0, y: 0 }, ultimoQuadro = 0;
+function animar(t) {
+  requestAnimationFrame(animar);
+  if (estado !== 'noite' || t - ultimoQuadro < 48) return;
+  ultimoQuadro = t;
+  cx.clearRect(0, 0, W, H);
+  brilhoNoite += ((document.body.classList.contains('espiando') ? 1 : 0) - brilhoNoite) * .05;
+  var ganho = .75 + brilhoNoite * .9;
+  for (var i = 0; i < estrelas.length; i++) {
+    var e = estrelas[i], a = e.b * (.5 + .5 * Math.sin(t * e.v + e.f)) * ganho;
+    cx.fillStyle = 'rgba(220,226,250,' + a.toFixed(3) + ')';
+    cx.beginPath(); cx.arc(e.x + desloc.x * .3, e.y + desloc.y * .3, e.r, 0, 6.2832); cx.fill();
+  }
+  if (!cadente && Math.random() < .0003) cadente = { x: Math.random() * W * .6 + W * .1, y: Math.random() * H * .3, vx: 5 + Math.random() * 3, vy: 1.5 + Math.random(), v: 1 };
+  if (cadente) {
+    var c = cadente, gr = cx.createLinearGradient(c.x, c.y, c.x - c.vx * 14, c.y - c.vy * 14);
+    gr.addColorStop(0, 'rgba(232,236,255,' + (.32 * c.v) + ')'); gr.addColorStop(1, 'rgba(232,236,255,0)');
+    cx.strokeStyle = gr; cx.lineWidth = 1.1; cx.beginPath(); cx.moveTo(c.x, c.y); cx.lineTo(c.x - c.vx * 14, c.y - c.vy * 14); cx.stroke();
+    c.x += c.vx; c.y += c.vy; c.v -= .012; if (c.v <= 0) cadente = null;
+  }
+  lua(W * .8 + desloc.x, H * .2 + desloc.y, Math.min(W, H) * .05, faseLua(new Date()), .5 + brilhoNoite * .5);
+}
+
+/* =========================================================
+   MODOS
+   ========================================================= */
+var estado = null, ultimoMov = Date.now(), espiarAte = 0, mudouBrilhoEm = 0;
+function ehNoite() { var m = agoraMin(), a = minDia(CFG.acordar), n = minDia(CFG.noite); return n > a ? (m >= n || m < a) : (m >= n && m < a); }
+function ir(novo) {
+  if (estado === novo) return;
+  estado = novo;
+  var b = document.body, keep = ['alerta-on', 'falando'].filter(function (c) { return b.classList.contains(c); });
+  b.className = 'm-' + novo + (ehNoite() ? ' noturno' : '') + (keep.length ? ' ' + keep.join(' ') : '');
+  if (novo === 'noite') brilho(1, 0);
+  else if (novo === 'quadro') { brilho(130, 0); trocarObra(true); }
+  else if (novo === 'painel') { brilho(ehNoite() ? 22 : 175, ehNoite() ? .45 : 0); renderSemana(); renderTempo(); }
+  else if (novo === 'foco') brilho(ehNoite() ? 30 : 140, ehNoite() ? .4 : 0);
+}
+function decidir() {
+  var t = Date.now();
+  if (foco) { ir('foco'); return; }
+  if (ehNoite()) {
+    if (estado === 'painel' && t - ultimoMov < 60000) return;
+    ir('noite');
+    if (espiarAte && t > espiarAte) { espiarAte = 0; document.body.classList.remove('espiando'); brilho(1, 0); }
+    return;
+  }
+  if (estado === 'painel' && t - ultimoMov < CFG.ociosoMin * 60000) return;
+  ir('quadro');
+}
+function bomDia() {
+  if (ehNoite() || ler('bomdia') === hojeStr()) return false;
+  guardar('bomdia', hojeStr());
+  ultimoMov = Date.now(); ir('painel');
+  carregar().then(function (d) { setTimeout(function () { avisarFalando(d.fala); }, 600); }, function () { if (dados) avisarFalando(dados.fala); });
+  return true;
+}
+function aoMovimento() {
+  if (Date.now() - mudouBrilhoEm < 2500) return;   // a própria tela acendendo não conta
+  ultimoMov = Date.now();
+  if (alertaAtual) return;
+  if (estado === 'noite') { espiarAte = Date.now() + 15000; document.body.classList.add('espiando'); brilho(14, 0); return; }
+  if (bomDia()) return;
+  if (estado === 'quadro') ir('painel');
+}
+window.aoMovimento = aoMovimento;
+function aoToque() {
+  ultimoMov = Date.now();
+  if (alertaAtual || foco) return;
+  if (bomDia()) return;
+  if (estado === 'noite') { document.body.classList.remove('espiando'); espiarAte = 0; ir('painel'); }
+  else if (estado === 'quadro') ir('painel');
+}
+
+/* =========================================================
+   MOVIMENTO (Fully Kiosk ou câmera frontal; as imagens nunca saem do tablet)
+   ========================================================= */
+function iniciarMovimento() {
+  try {
+    if (typeof fully !== 'undefined' && fully.bind && fully.getBooleanSetting && String(fully.getBooleanSetting('motionDetection')) === 'true') {
+      fully.bind('onMotion', 'window.aoMovimento && window.aoMovimento()'); return;
+    }
+  } catch (e) {}
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 160 }, height: { ideal: 120 } }, audio: false }).then(function (st) {
+    var v = document.createElement('video'); v.muted = true; v.setAttribute('playsinline', ''); v.srcObject = st; v.play();
+    var c = document.createElement('canvas'); c.width = 40; c.height = 30;
+    var g = c.getContext('2d', { willReadFrequently: true }), ant = null, somaAnt = 0, N = 1200;
+    setInterval(function () {
+      if (v.readyState < 2) return;
+      g.drawImage(v, 0, 0, 40, 30);
+      var px = g.getImageData(0, 0, 40, 30).data, cz = new Float32Array(N), soma = 0, i;
+      for (i = 0; i < N; i++) { cz[i] = px[i * 4] * .3 + px[i * 4 + 1] * .59 + px[i * 4 + 2] * .11; soma += cz[i]; }
+      if (ant) {
+        var media = soma / N, dg = (soma - somaAnt) / N, sens = media < 25 ? 9 : media < 60 ? 14 : 22, mud = 0;
+        for (i = 0; i < N; i++) if (Math.abs(cz[i] - ant[i] - dg) > sens) mud++;
+        if (mud > N * .035) aoMovimento();
+      }
+      ant = cz; somaAnt = soma;
+    }, 350);
+  }).catch(function () {});
+}
+
+/* =========================================================
+   RELÓGIO
+   ========================================================= */
+var ultimoMin = -1;
+function tick() {
+  var d = new Date(), hm = dois(d.getHours()) + ':' + dois(d.getMinutes());
+  $('qHora').textContent = hm; $('pHora').textContent = hm; $('nHora').textContent = hm;
+  if (d.getMinutes() !== ultimoMin) {
+    ultimoMin = d.getMinutes();
+    $('qData').textContent = dataLonga(d); $('pData').textContent = dataLonga(d);
+    desloc.x = Math.round((Math.random() - .5) * 20); desloc.y = Math.round((Math.random() - .5) * 14);   // evita marcar a tela
+    document.documentElement.style.setProperty('--dx', desloc.x + 'px');
+    document.documentElement.style.setProperty('--dy', desloc.y + 'px');
+    if (estado === 'quadro') trocarObra();
+    if (estado === 'painel' && $('vSemana').classList.contains('on')) renderSemana();
+  }
+  decidir();
+  if (foco) atualizarFoco();
+  if (alertaAtual) atualizarAlerta();
+  if (d.getSeconds() % 20 === 0) { renderTempo(); renderRemedios(); }
+  if (d.getSeconds() % 10 === 5) verificarAlertas();
+}
+
+/* =========================================================
+   INÍCIO
+   ========================================================= */
+$('bFalar').onclick = function (e) {
+  e.stopPropagation(); ultimoMov = Date.now(); liberarVoz();
+  if (dados && dados.fala) { falar(dados.fala); carregar(); }
+  else { status('preparando…'); carregar().then(function (d) { falar(d.fala); }); }
+};
+$('bAtualizar').onclick = function () { status('lendo e-mails…'); carregar('escanear').then(function () { status('tudo atualizado'); }); };
+$('tocar').onclick = function (e) { e.stopPropagation(); liberarVoz(); $('tocar').classList.remove('on'); falar(falaPendente || (dados && dados.fala)); };
+$('cfgOk').onclick = function () {
+  CFG.api = $('cfgApi').value.trim(); CFG.k = $('cfgK').value.trim();
+  guardar('api', CFG.api); guardar('k', CFG.k); $('config').classList.remove('on'); carregar();
+};
+function telaCheia() {
+  var el = document.documentElement;
+  if (document.fullscreenElement || document.webkitFullscreenElement) return;
+  try { var p = (el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' }); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+}
+document.addEventListener('pointerdown', function (e) {
+  telaCheia(); liberarVoz();
+  if (!e.target.closest('button, input, .folha')) aoToque(); else ultimoMov = Date.now();
+});
+document.addEventListener('visibilitychange', function () { if (!document.hidden) carregar(); });
+addEventListener('resize', tamanho);
+if (window.speechSynthesis) speechSynthesis.onvoiceschanged = function () {};
+try { if (navigator.wakeLock && !temFully()) navigator.wakeLock.request('screen'); } catch (e) {}
+
+tamanho();
+if (dados) render();
+tick();
+setInterval(tick, 1000);
+setInterval(function () { carregar(); }, 5 * 60 * 1000);
+carregar();
+iniciarMovimento();
+requestAnimationFrame(animar);
+</script>
+</body>
+</html>
