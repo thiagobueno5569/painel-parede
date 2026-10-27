@@ -10,8 +10,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,400&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --parede: #12110f;
-    --painel: #171614;
+    --parede: #000;   /* preto puro: no AMOLED o pixel fica desligado */
+    --painel: #000;
     --tinta: #ece6db;
     --suave: #aaa397;
     --apagado: #6f6a61;
@@ -36,13 +36,11 @@
 
   .tela { position: fixed; inset: 0; opacity: 0; pointer-events: none; transition: opacity 1.2s ease; }
   body.m-quadro #quadro, body.m-painel #painel, body.m-noite #noite, body.m-foco #foco { opacity: 1; pointer-events: auto; }
-  #ceu { position: fixed; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 1.5s; }
+  #ceu { position: fixed; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 1.5s; background: #000; }
   body.m-noite #ceu { opacity: 1; }
 
   /* ================= QUADRO ================= */
-  #quadro { background:
-      radial-gradient(70% 55% at 50% 0%, rgba(255, 236, 200, .07), transparent 70%),
-      linear-gradient(#141210, #0f0e0c); }
+  #quadro { background: #000; }
   .parede { position: absolute; left: 0; right: 0; top: 0; bottom: 23vh; display: flex; align-items: center; justify-content: center; }
   .moldura {
     position: relative; padding: 2.6vh; background: #e8e1d3; transform: translate(var(--dx), var(--dy));
@@ -157,7 +155,7 @@
   .mes { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); grid-template-rows: auto; grid-auto-rows: 1fr; gap: 1px; background: var(--linha); border: 1px solid var(--linha); min-height: 0; }
   .mes .ds { background: var(--painel); font-size: .85vw; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--apagado); padding: .8vh .6vw; }
   .mes .c { background: var(--painel); padding: .6vh .5vw; overflow: hidden; min-height: 0; }
-  .mes .c.fora { background: #141311; }
+  .mes .c.fora { background: #000; }
   .mes .n { font-size: 1vw; color: var(--suave); }
   .mes .c.hoje .n { display: inline-block; background: var(--ouro); color: #12110f; font-weight: 600; border-radius: 99px; padding: 0 .5vw; }
   .mes .c.passado .n { color: var(--apagado); }
@@ -203,7 +201,7 @@
   .n-linha.importante { opacity: .38; }
 
   /* ================= ALERTA ================= */
-  #alerta { position: fixed; inset: 0; z-index: 20; background: #0e0d0b; display: none; grid-template-columns: 1.1vw 1fr 34vw; }
+  #alerta { position: fixed; inset: 0; z-index: 20; background: #000; display: none; grid-template-columns: 1.1vw 1fr 34vw; }
   body.alerta-on #alerta { display: grid; }
   body.alerta-on.noturno #alerta { filter: brightness(.7); }
   .al-faixa { background: var(--c, var(--ouro)); }
@@ -233,7 +231,7 @@
   #toast b { font-weight: 500; }
 
   /* ================= FOCO ================= */
-  #foco { background: #100f0d; display: grid; grid-template-columns: 1fr 1fr; align-items: center; padding: 0 7vw; }
+  #foco { background: #000; display: grid; grid-template-columns: 1fr 1fr; align-items: center; padding: 0 7vw; }
   .f-anel { width: 40vw; height: 40vw; }
   .f-texto .olho { color: var(--ouro); font-size: 1.2vw; }
   .f-tempo { font-family: var(--serif); font-weight: 300; font-size: 9vw; line-height: 1; margin-top: 1.6vh; }
@@ -516,6 +514,11 @@ function api(acao, p) {
       return;
     }
     if (!CFG.api || !CFG.k) { $('config').classList.add('on'); return falha(new Error('sem configuração')); }
+    if (acao === 'voz') {   // texto longo: vai por POST
+      fetch(CFG.api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ k: CFG.k, acao: acao, p: p }) })
+        .then(function (r) { return r.json(); }).then(ok, falha);
+      return;
+    }
     var url = CFG.api + (CFG.api.indexOf('?') >= 0 ? '&' : '?') + 'formato=json&k=' + encodeURIComponent(CFG.k) +
       (acao ? '&acao=' + encodeURIComponent(acao) : '') + (p ? '&p=' + encodeURIComponent(JSON.stringify(p)) : '');
     fetch(url).then(function (r) { return r.json(); }).then(function (j) { if (j && j.erro) falha(new Error(j.erro)); else ok(j); }, falha);
@@ -588,7 +591,7 @@ function renderAgora() {
   var s = situacao(), t = Date.now(), el = $('agora'), h = '', fr = 0, cor = '#c4a878', cls = 'agora';
   if (s.tipo === 'emaula') {
     var a = s.a; cor = a.cor; fr = (a.fim - t) / 3600000;
-    h = '<div class="olho">Em aula agora</div>' + corpo('termina em ' + falta(a.fim - t), a.nome, a.hIni + '–' + a.hFim + ' · ' + esc(localCurto(a.local)));
+    h = '<div class="olho">Em aula · termina em</div>' + corpo(falta(a.fim - t), a.nome, a.hIni + '–' + a.hFim + ' · ' + esc(localCurto(a.local)));
   } else if (s.tipo === 'sairem') {
     var b = s.a; cor = b.cor; fr = (b.saida - t) / 3600000;
     if (b.saida - t < 15 * 60000) cls += ' urgente';
@@ -817,7 +820,40 @@ function semVoz(motivo) {
   if (motivo === 'not-allowed') { $('tocar').classList.add('on'); status('toque na tela para liberar o som'); }
   else status('sem voz em português — Configurações › Conversão de texto em voz');
 }
+var audioAtual = null, cacheVoz = {}, naturalFalhouAte = 0, idFala = 0;
 function falar(texto) {
+  if (!texto) return;
+  if (dados && dados.vozNatural && Date.now() > naturalFalhouAte) falarNatural(texto);
+  else falarAparelho(texto);
+}
+function falarNatural(texto) {
+  parar();
+  $('tocar').classList.remove('on');
+  document.body.classList.add('falando');
+  var meu = ++idFala, desistiu = false;
+  var limite = setTimeout(function () { desistiu = true; if (meu === idFala) { naturalFalhouAte = Date.now() + 5 * 60000; falarAparelho(texto); } }, 30000);
+  var pegar = cacheVoz[texto] ? Promise.resolve(cacheVoz[texto]) : api('voz', { texto: texto });
+  pegar.then(function (r) {
+    clearTimeout(limite);
+    if (desistiu || meu !== idFala) return;
+    if (!r || !r.audio) { naturalFalhouAte = Date.now() + 10 * 60000; status('voz natural indisponível' + (r && r.erro ? ' (' + String(r.erro).slice(0, 60) + ')' : '')); falarAparelho(texto); return; }
+    if (texto.length < 400) cacheVoz[texto] = r;   // avisos curtos se repetem: guarda
+    var a = new Audio('data:' + (r.mime || 'audio/wav') + ';base64,' + r.audio);
+    audioAtual = a;
+    a.onended = function () { if (audioAtual === a) { audioAtual = null; fimFala(); } };
+    var p = a.play();
+    if (p && p.catch) p.catch(function (e) {
+      if (meu !== idFala) return;
+      if (e && e.name === 'NotAllowedError') { falaPendente = texto; semVoz('not-allowed'); }
+      else falarAparelho(texto);
+    });
+  }, function () {
+    clearTimeout(limite);
+    if (desistiu || meu !== idFala) return;
+    naturalFalhouAte = Date.now() + 5 * 60000; falarAparelho(texto);
+  });
+}
+function falarAparelho(texto) {
   if (!texto) return;
   parar();
   $('tocar').classList.remove('on');
@@ -848,6 +884,7 @@ function falar(texto) {
 }
 function parar() {
   fimFala();
+  if (audioAtual) { try { audioAtual.pause(); } catch (e) {} audioAtual = null; }
   try { if (typeof fully !== 'undefined' && fully.stopTextToSpeech) fully.stopTextToSpeech(); } catch (e) {}
   if (window.speechSynthesis) window.speechSynthesis.cancel();
 }
@@ -1113,9 +1150,9 @@ function tamanho() {
 }
 function faseLua(d) { var c = 2551442.877, ref = Date.UTC(2000, 0, 6, 18, 14) / 1000, f = ((d.getTime() / 1000 - ref) % c) / c; return f < 0 ? f + 1 : f; }
 function lua(x, y, r, fase, a) {
-  var halo = cx.createRadialGradient(x, y, r * .9, x, y, r * 5);
+  var halo = cx.createRadialGradient(x, y, r * .95, x, y, r * 1.8);
   halo.addColorStop(0, 'rgba(210,215,240,' + (.06 * a) + ')'); halo.addColorStop(1, 'rgba(210,215,240,0)');
-  cx.fillStyle = halo; cx.beginPath(); cx.arc(x, y, r * 5, 0, 6.2832); cx.fill();
+  cx.fillStyle = halo; cx.beginPath(); cx.arc(x, y, r * 1.8, 0, 6.2832); cx.fill();
   cx.fillStyle = 'rgba(110,115,140,' + (.1 * a) + ')'; cx.beginPath(); cx.arc(x, y, r, 0, 6.2832); cx.fill();
   var k = Math.cos(fase * 2 * Math.PI), lado = fase < .5 ? -1 : 1;   // hemisfério sul
   cx.save(); cx.translate(x, y); cx.scale(lado, 1);

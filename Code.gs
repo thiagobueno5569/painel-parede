@@ -48,8 +48,13 @@ const CONFIG = {
   // ---------- REMÉDIOS ----------
   // Dá para cadastrar e editar pelo próprio tablet (botão "Remédios"). Esta lista só vale até lá.
   REMEDIOS: [],
-  GEMINI_API_KEY: '',           // opcional (aistudio.google.com) — deixa a leitura dos e-mails bem mais esperta
+  // Chave do Gemini: coloque em Configurações do projeto › Propriedades do script › GEMINI_API_KEY
+  // (assim ela não se perde quando o código é atualizado). Deixa a voz natural e a leitura dos e-mails mais esperta.
+  GEMINI_API_KEY: '',
   GEMINI_MODELO: 'gemini-2.5-flash',
+  // Voz natural (precisa da chave do Gemini). Vozes: Kore, Aoede, Leda, Charon, Puck, Orus…
+  VOZ: { natural: true, modelo: 'gemini-3.8-flash-tts', voz: 'Kore',
+    estilo: 'voz calma, acolhedora e natural, em português do Brasil, como uma assistente pessoal falando em casa' },
   MARCADOR: 'Assistente/Lido',  // marcador posto nos e-mails já analisados
   DIAS_EMAIL: 3,                // analisa e-mails dos últimos X dias
   NOTICIAS: 4,
@@ -121,6 +126,19 @@ function doGet(e) {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+/** Pedidos grandes (ex.: texto para a voz) chegam por POST: corpo JSON { k, acao, p } */
+function doPost(e) {
+  let r;
+  try {
+    const b = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    checarChave_(b.k);
+    r = api_(b.acao || '', b.p || {});
+  } catch (err) {
+    r = { erro: String(err) };
+  }
+  return ContentService.createTextOutput(JSON.stringify(r)).setMimeType(ContentService.MimeType.JSON);
+}
+
 function checarChave_(k) {
   if (k !== PropertiesService.getScriptProperties().getProperty('CHAVE')) throw new Error('Acesso negado');
 }
@@ -149,7 +167,74 @@ function api_(acao, p) {
   else if (acao === 'tomei') marcarRemedio_(p.id, p.hora, true);
   else if (acao === 'desfazer') marcarRemedio_(p.id, p.hora, false);
   else if (acao === 'remedios') salvarRemedios_(p.lista);
+  else if (acao === 'voz') return vozNatural_(p.texto);
   return getBriefing();
+}
+
+// ---------------------------------------------------------- VOZ NATURAL (Gemini TTS)
+
+function chaveGemini_() {
+  return PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY') || CONFIG.GEMINI_API_KEY || '';
+}
+
+function vozDisponivel_() { return !!(CONFIG.VOZ && CONFIG.VOZ.natural && chaveGemini_()); }
+
+/** Devolve { audio: base64, mime } com a fala em voz natural, ou { erro } */
+function vozNatural_(texto) {
+  texto = String(texto || '').slice(0, 4000);
+  if (!texto) return { erro: 'sem texto' };
+  if (!vozDisponivel_()) return { erro: 'sem chave do Gemini' };
+  const V = CONFIG.VOZ, key = chaveGemini_();
+  // 1) API "interactions" (modelos TTS atuais)
+  let r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { 'x-goog-api-key': key },
+    payload: JSON.stringify({
+      model: V.modelo,
+      input: [{ type: 'user_input', content: [{ type: 'text', text: texto,
+        annotations: [{ type: 'speech_metadata', style: V.estilo }] }] }],
+      response_format: { type: 'audio', mime_type: 'audio/wav' },
+      generation_config: { speech_config: [{ voice: V.voz }] }
+    })
+  });
+  if (r.getResponseCode() === 200) {
+    const j = JSON.parse(r.getContentText());
+    let dado = null;
+    (j.steps || []).forEach(function (st) {
+      (st.content || []).forEach(function (c) { if (c.type === 'audio' && c.data) dado = c.data; });
+    });
+    if (dado) return { audio: dado, mime: 'audio/wav' };
+  }
+  const erro1 = r.getResponseCode() + ' ' + r.getContentText().slice(0, 200);
+  // 2) formato antigo generateContent (PCM 24 kHz) — reserva
+  r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=' + key, {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    payload: JSON.stringify({
+      contents: [{ parts: [{ text: 'Fale em português do Brasil, com ' + V.estilo + ': ' + texto }] }],
+      generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: V.voz } } } }
+    })
+  });
+  if (r.getResponseCode() === 200) {
+    const p = JSON.parse(r.getContentText()).candidates[0].content.parts[0].inlineData;
+    if (p && p.data) return { audio: Utilities.base64Encode(wav_(Utilities.base64Decode(p.data), 24000)), mime: 'audio/wav' };
+  }
+  return { erro: erro1 + ' | ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 200) };
+}
+
+/** Coloca cabeçalho WAV em PCM 16-bit mono */
+function wav_(pcm, taxa) {
+  const n = pcm.length, h = [];
+  function txt(s) { for (let i = 0; i < s.length; i++) h.push(s.charCodeAt(i)); }
+  function u32(v) { h.push(v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >> 24) & 255); }
+  function u16(v) { h.push(v & 255, (v >> 8) & 255); }
+  txt('RIFF'); u32(36 + n); txt('WAVE'); txt('fmt '); u32(16); u16(1); u16(1); u32(taxa); u32(taxa * 2); u16(2); u16(16); txt('data'); u32(n);
+  return h.map(function (b) { return b > 127 ? b - 256 : b; }).concat(pcm);
+}
+
+/** Rode no editor para testar a voz natural */
+function testarVoz() {
+  const r = vozNatural_('Oi, Thiago! Esta é a sua nova voz. Daqui a quinze minutos você precisa sair para Cálculo Vetorial.');
+  Logger.log(r.erro ? 'Erro: ' + r.erro : 'Funcionou! Áudio com ' + Math.round(r.audio.length * 0.75 / 1024) + ' KB.');
 }
 
 // ---------------------------------------------------------- REMÉDIOS
@@ -375,7 +460,7 @@ function processarMensagem_(m) {
     }
   });
   if (!eventos.length) {
-    const ev = CONFIG.GEMINI_API_KEY ? extrairComGemini_(m) : extrairHeuristica_(m);
+    const ev = chaveGemini_() ? extrairComGemini_(m) : extrairHeuristica_(m);
     if (ev) eventos.push(ev);
   }
   let n = 0;
@@ -497,7 +582,7 @@ function extrairComGemini_(m) {
     'De: ' + m.getFrom() + '\nData do e-mail: ' + m.getDate() + '\nAssunto: ' + m.getSubject() + '\n\n' +
     (m.getPlainBody() || '').slice(0, 6000);
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + CONFIG.GEMINI_MODELO +
-    ':generateContent?key=' + CONFIG.GEMINI_API_KEY;
+    ':generateContent?key=' + chaveGemini_();
   const r = UrlFetchApp.fetch(url, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     payload: JSON.stringify({
@@ -771,7 +856,7 @@ function eventosFaculdade_(m) {
   if (evs.length) return evs;
 
   // 2) IA (se tiver chave) — entende qualquer e-mail
-  if (CONFIG.GEMINI_API_KEY) {
+  if (chaveGemini_()) {
     const g = faculdadeGemini_(m);
     if (g) return g;
   }
@@ -809,7 +894,7 @@ function faculdadeHeuristica_(m) {
 
 function chamarGemini_(prompt) {
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + CONFIG.GEMINI_MODELO +
-    ':generateContent?key=' + CONFIG.GEMINI_API_KEY;
+    ':generateContent?key=' + chaveGemini_();
   const r = UrlFetchApp.fetch(url, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     payload: JSON.stringify({
@@ -943,6 +1028,7 @@ function getBriefing() {
     horaNoite: CONFIG.HORA_NOITE,
     horaDormir: CONFIG.HORA_NOITE,
     deslocamento: CONFIG.DESLOCAMENTO_MIN,
+    vozNatural: vozDisponivel_(),
     levar: CONFIG.LEVAR,
     dataTexto: DIAS[agora.getDay()] + ', ' + agora.getDate() + ' de ' + MESES[agora.getMonth()],
     cidade: CONFIG.CIDADE,
