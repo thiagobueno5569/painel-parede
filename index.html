@@ -135,6 +135,39 @@
   .amanha-linha { margin-top: auto; padding: 1.6vh 0 .4vh; font-size: 1.15vw; color: var(--suave); border-top: 1px solid var(--linha); }
   .amanha-linha b { color: var(--tinta); font-weight: 500; }
 
+  /* mini calendário (coluna da esquerda) */
+  .mini { margin-top: auto; border-top: 1px solid var(--linha); padding: 1.8vh 0 .4vh; }
+  .mini-topo { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .8vh; }
+  .mini-topo b { font-family: var(--serif); font-weight: 400; font-size: 1.6vw; text-transform: capitalize; }
+  .mini-topo span { font-size: .9vw; color: var(--apagado); letter-spacing: .14em; text-transform: uppercase; }
+  .mini-grade { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; row-gap: .25vh; }
+  .mini-grade .ds { font-size: .8vw; font-weight: 600; letter-spacing: .1em; color: var(--apagado); padding-bottom: .3vh; }
+  .mini-grade .d { position: relative; font-size: 1vw; line-height: 2.3vw; height: 2.3vw; width: 2.3vw; margin: 0 auto; border-radius: 50%; color: var(--suave); }
+  .mini-grade .d.passado { color: var(--apagado); opacity: .6; }
+  .mini-grade .d.hoje { background: var(--ouro); color: #12110f; font-weight: 600; }
+  .mini-grade .d.aula::before { content: ''; position: absolute; left: 50%; top: .15vw; width: .22vw; height: .22vw; margin-left: -.11vw; border-radius: 50%; background: var(--apagado); }
+  .mini-grade .d.hoje.aula::before { background: #12110f; }
+  .pts { position: absolute; left: 0; right: 0; bottom: -.1vw; display: flex; gap: .15vw; justify-content: center; }
+  .pts i { width: .34vw; height: .34vw; border-radius: 50%; background: var(--tinta); opacity: .7; }
+  .pts i.prova { background: var(--alerta); opacity: 1; } .pts i.entrega { background: var(--ouro); opacity: 1; }
+  .pts i.feriado, .pts i.sem_aula { background: var(--ok); opacity: 1; } .pts i.reposicao { background: #8fb4c9; opacity: 1; }
+  .d.hoje .pts { bottom: -.6vw; }
+
+  /* mês (aba) */
+  .mes { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); grid-template-rows: auto; grid-auto-rows: 1fr; gap: 1px; background: var(--linha); border: 1px solid var(--linha); min-height: 0; }
+  .mes .ds { background: var(--painel); font-size: .85vw; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--apagado); padding: .8vh .6vw; }
+  .mes .c { background: var(--painel); padding: .6vh .5vw; overflow: hidden; min-height: 0; }
+  .mes .c.fora { background: #141311; }
+  .mes .n { font-size: 1vw; color: var(--suave); }
+  .mes .c.hoje .n { display: inline-block; background: var(--ouro); color: #12110f; font-weight: 600; border-radius: 99px; padding: 0 .5vw; }
+  .mes .c.passado .n { color: var(--apagado); }
+  .mes .it { font-size: .78vw; line-height: 1.3; margin-top: .3vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--tinta); padding-left: .4vw; border-left: 2px solid var(--apagado); }
+  .mes .it.prova { border-color: var(--alerta); } .mes .it.entrega { border-color: var(--ouro); }
+  .mes .it.feriado, .mes .it.sem_aula { border-color: var(--ok); color: var(--suave); } .mes .it.reposicao { border-color: #8fb4c9; }
+  .mes .mais { font-size: .75vw; color: var(--apagado); margin-top: .2vh; }
+  .mes-rodape { display: flex; gap: 1.6vw; font-size: .85vw; color: var(--apagado); padding-top: 1vh; }
+  .mes-rodape i { display: inline-block; width: .55vw; height: .55vw; border-radius: 50%; margin-right: .4vw; vertical-align: .05em; }
+
   /* semana */
   .semana { position: relative; flex: 1; display: grid; grid-template-columns: 4vw repeat(5, 1fr); grid-template-rows: auto 1fr; gap: 0 .6vw; min-height: 0; }
   .sem-cab { grid-row: 1; text-align: center; font-size: .98vw; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--apagado); padding-bottom: 1vh; }
@@ -268,11 +301,13 @@
         <div class="olho">Medicamentos de hoje</div>
         <ul class="rem-lista" id="remLista"></ul>
       </div>
+      <div class="mini" id="mini" role="button" aria-label="Abrir o mês"></div>
     </section>
     <section class="col">
       <nav class="abas">
         <button class="on" data-vista="vHoje">Hoje</button>
         <button data-vista="vSemana">Semana</button>
+        <button data-vista="vMes">Mês</button>
       </nav>
       <div class="vista on" id="vHoje">
         <div class="dia-todo" id="diaTodo"></div>
@@ -284,6 +319,7 @@
         <div class="amanha-linha" id="amanha"></div>
       </div>
       <div class="vista" id="vSemana"><div class="semana" id="semana"></div></div>
+      <div class="vista" id="vMes"><div class="mes" id="mes"></div></div>
     </section>
   </div>
   <footer class="p-rodape">
@@ -442,6 +478,7 @@ function falta(ms) {
   if (m < 60) return m + ' min';
   return Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + dois(m % 60) : '');
 }
+function saidaTxt(a) { return a.saidaAte ? hhmm(a.saida) + '–' + hhmm(a.saidaAte) : hhmm(a.saida); }
 function localCurto(l) { return String(l || '').replace('CSA · Pavilhão, ', 'CSA · '); }
 function primeiroNome(p) { return String(p || '').split(' ')[0]; }
 var DSEM = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -534,6 +571,8 @@ function render() {
   renderPrazos();
   renderRemedios();
   renderSemana();
+  renderMini();
+  renderMes();
   renderTempo();
 }
 
@@ -554,17 +593,17 @@ function renderAgora() {
     var b = s.a; cor = b.cor; fr = (b.saida - t) / 3600000;
     if (b.saida - t < 15 * 60000) cls += ' urgente';
     h = '<div class="olho">Sair de casa em</div>' + corpo(falta(b.saida - t), b.nome,
-      'sair às <b>' + hhmm(b.saida) + '</b> · aula às ' + b.hIni + '<br>' + esc(localCurto(b.local)));
+      'sair ' + (b.saidaAte ? 'entre' : 'às') + ' <b>' + saidaTxt(b) + '</b> · aula às ' + b.hIni + '<br>' + esc(localCurto(b.local)));
   } else if (s.tipo === 'saiaagora') {
     var d = s.a; cor = '#d97a6c'; fr = (d.ini - t) / 3600000; cls += ' urgente';
-    h = '<div class="olho">Saia agora</div>' + corpo('aula em ' + falta(d.ini - t), d.nome, 'começa às ' + d.hIni + ' · ' + esc(localCurto(d.local)));
+    h = '<div class="olho">Saia agora · aula começa em</div>' + corpo(falta(d.ini - t), d.nome, 'às ' + d.hIni + ' · ' + esc(localCurto(d.local)));
   } else if (s.tipo === 'proxima') {
     var e = s.a; cor = e.cor; fr = (e.ini - t) / 3600000;
     h = '<div class="olho">Próxima aula</div>' + corpo('em ' + falta(e.ini - t), e.nome, e.hIni + ' · ' + esc(localCurto(e.local)));
   } else {
     var am = s.amanha;
     h = '<div class="olho">Aulas de hoje</div>' + corpo('Livre', aulasHojeTodas().length ? 'Aulas de hoje concluídas' : 'Sem aula hoje',
-      am ? 'Amanhã: <b>' + esc(am.nome) + '</b> às ' + am.hIni + (am.alertaSaida ? ' · sair ' + hhmm(am.saida) : '') : 'Amanhã também sem aula');
+      am ? 'Amanhã: <b>' + esc(am.nome) + '</b> às ' + am.hIni + (am.alertaSaida ? ' · sair ' + saidaTxt(am) : '') : 'Amanhã também sem aula');
   }
   var aviso = s.a && s.a.status === 'aviso' ? '<div class="aviso-aula">' + esc(s.a.nota) + '</div>' : '';
   el.className = cls;
@@ -609,7 +648,7 @@ function marcarAgenda() {
     if (it.aula && it.aula.status === 'cancelada') { cls = 'cancelada'; st = 'Cancelada'; }
     else if (it.fim <= t) { cls = 'passou'; st = 'Concluída'; }
     else if (it.ini <= t) { cls = 'agora'; st = 'Agora'; }
-    else if (it.aula && it.aula.alertaSaida && it.aula.saida - t < 90 * 60000) { cls = 'sair'; st = 'Sair ' + hhmm(it.aula.saida); }
+    else if (it.aula && it.aula.alertaSaida && it.aula.saida - t < 90 * 60000) { cls = 'sair'; st = 'Sair ' + saidaTxt(it.aula); }
     else if (it.aula && it.aula.status === 'aviso') { cls = 'aviso'; st = 'Confirmar'; }
     li.className = cls;
     li.querySelector('.st').textContent = st;
@@ -625,7 +664,7 @@ function renderPrazos() {
   }).join('');
   var am = ((dados && dados.aulasAmanha) || []).filter(function (a) { return a.status !== 'cancelada'; });
   $('amanha').innerHTML = am.length
-    ? 'Amanhã: <b>' + am.map(function (a) { return esc(a.curto) + ' ' + a.hIni; }).join('</b> · <b>') + '</b>' + (am[0].alertaSaida ? ' &nbsp;—&nbsp; sair de casa às <b>' + hhmm(am[0].saida) + '</b>' : '')
+    ? 'Amanhã: <b>' + am.map(function (a) { return esc(a.curto) + ' ' + a.hIni; }).join('</b> · <b>') + '</b>' + (am[0].alertaSaida ? ' &nbsp;—&nbsp; sair de casa às <b>' + saidaTxt(am[0]) + '</b>' : '')
     : 'Amanhã: sem aula.';
 }
 
@@ -663,6 +702,46 @@ function renderSemana() {
   el.innerHTML = h;
 }
 
+function diasComAula() {   // dias da semana com aula (para o pontinho do mini calendário)
+  var d = {}; ((dados && dados.grade) || []).forEach(function (a) { a.horarios.forEach(function (h) { d[h.dia] = true; }); }); return d;
+}
+function renderMini() {
+  var m = (dados && dados.mes) || {}, hoje = new Date(), ano = m.ano != null ? m.ano : hoje.getFullYear(), mes = m.mes != null ? m.mes : hoje.getMonth(), dias = m.dias || {};
+  var p1 = new Date(ano, mes, 1).getDay(), tot = new Date(ano, mes + 1, 0).getDate(), comAula = diasComAula();
+  var h = '<div class="mini-topo"><b>' + MESES[mes] + '</b><span>' + ano + '</span></div><div class="mini-grade">';
+  ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].forEach(function (x) { h += '<div class="ds">' + x + '</div>'; });
+  for (var i = 0; i < p1; i++) h += '<div></div>';
+  for (var d = 1; d <= tot; d++) {
+    var info = dias[d], dow = (p1 + d - 1) % 7, cls = 'd num';
+    if (d === hoje.getDate()) cls += ' hoje'; else if (d < hoje.getDate()) cls += ' passado';
+    var pts = '';
+    if (info && info.n) {
+      var tp = (info.tipos.length ? info.tipos : ['']).slice(0, 3);
+      pts = '<span class="pts">' + tp.map(function (t) { return '<i class="' + esc(t) + '"></i>'; }).join('') + '</span>';
+    }
+    h += '<div class="' + cls + '">' + d + pts + '</div>';
+  }
+  $('mini').innerHTML = h + '</div>';
+}
+function renderMes() {
+  var m = (dados && dados.mes) || {}, hoje = new Date(), ano = m.ano != null ? m.ano : hoje.getFullYear(), mes = m.mes != null ? m.mes : hoje.getMonth(), dias = m.dias || {};
+  var p1 = new Date(ano, mes, 1).getDay(), tot = new Date(ano, mes + 1, 0).getDate();
+  var h = '';
+  ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].forEach(function (x) { h += '<div class="ds">' + x + '</div>'; });
+  for (var i = 0; i < p1; i++) h += '<div class="c fora"></div>';
+  for (var d = 1; d <= tot; d++) {
+    var info = dias[d] || { itens: [] }, cls = 'c';
+    if (d === hoje.getDate()) cls += ' hoje'; else if (d < hoje.getDate()) cls += ' passado';
+    var it = info.itens || [];
+    h += '<div class="' + cls + '"><span class="n num">' + d + '</span>' + it.slice(0, 2).map(function (x) {
+      return '<div class="it ' + esc(x.tipo) + '">' + (x.h ? '<span class="num">' + esc(x.h) + '</span> ' : '') + esc(x.t) + '</div>';
+    }).join('') + (it.length > 2 ? '<div class="mais">+' + (it.length - 2) + '</div>' : '') + '</div>';
+  }
+  var resto = (7 - (p1 + tot) % 7) % 7;
+  for (var j = 0; j < resto; j++) h += '<div class="c fora"></div>';
+  $('mes').innerHTML = h;
+}
+
 function renderQuadroProx() {
   var s = situacao(), t = Date.now(), el = $('qProx'), urg = false, h = '';
   var r = remediosHoje().filter(function (x) { return !x.tomado && x.ms > t - 4 * 3600000; })[0];
@@ -670,7 +749,7 @@ function renderQuadroProx() {
   else if (s.tipo === 'sairem' || s.tipo === 'saiaagora') {
     urg = s.a.saida - t < 15 * 60000;
     h = olho('Próxima aula', s.a.cor) + '<div class="nome">' + esc(s.a.nome) + '</div><div class="det num">' + s.a.hIni + ' · <b>sair ' +
-      (s.tipo === 'saiaagora' ? 'agora' : 'às ' + hhmm(s.a.saida) + ' (em ' + falta(s.a.saida - t) + ')') + '</b></div>';
+      (s.tipo === 'saiaagora' ? 'agora' : 'às ' + saidaTxt(s.a) + ' (em ' + falta(s.a.saida - t) + ')') + '</b></div>';
   } else if (s.tipo === 'proxima') h = olho('Próxima aula', s.a.cor) + '<div class="nome">' + esc(s.a.nome) + '</div><div class="det num">' + s.a.hIni + ' · em ' + falta(s.a.ini - t) + '</div>';
   else if (r) h = olho('Medicamento', '#c4a878') + '<div class="nome">' + esc(r.nome) + '</div><div class="det num">' + r.hora + (r.ms <= t ? ' · <b>pendente</b>' : '') + '</div>';
   else if (s.amanha) h = olho('Amanhã', s.amanha.cor) + '<div class="nome">' + esc(s.amanha.nome) + '</div><div class="det num">' + s.amanha.hIni + '</div>';
@@ -683,8 +762,8 @@ function renderNoiteLinha() {
   var s = situacao(), t = Date.now(), el = $('nLinha'), txt = '', imp = false;
   var r = remediosHoje().filter(function (x) { return !x.tomado && x.ms > t - 4 * 3600000; })[0];
   if (s.tipo === 'emaula') txt = 'Em aula · <b>' + esc(s.a.curto) + '</b> até ' + s.a.hFim;
-  else if (s.tipo === 'sairem' || s.tipo === 'saiaagora' || s.tipo === 'proxima') { txt = 'Hoje · <b>' + esc(s.a.curto) + '</b> às ' + s.a.hIni + (s.a.alertaSaida ? ' · sair ' + hhmm(s.a.saida) : ''); imp = true; }
-  else if (s.amanha) txt = 'Amanhã · <b>' + esc(s.amanha.curto) + '</b> às ' + s.amanha.hIni + (s.amanha.alertaSaida ? ' · sair ' + hhmm(s.amanha.saida) : '');
+  else if (s.tipo === 'sairem' || s.tipo === 'saiaagora' || s.tipo === 'proxima') { txt = 'Hoje · <b>' + esc(s.a.curto) + '</b> às ' + s.a.hIni + (s.a.alertaSaida ? ' · sair ' + saidaTxt(s.a) : ''); imp = true; }
+  else if (s.amanha) txt = 'Amanhã · <b>' + esc(s.amanha.curto) + '</b> às ' + s.amanha.hIni + (s.amanha.alertaSaida ? ' · sair ' + saidaTxt(s.amanha) : '');
   else txt = 'Amanhã sem aula';
   if (r) { txt += ' &nbsp;·&nbsp; remédio <b>' + esc(r.nome) + '</b> ' + r.hora; imp = imp || r.ms - t < 3600000; }
   el.innerHTML = txt;
@@ -858,7 +937,7 @@ function abrirAlerta(al) {
     $('alerta').style.setProperty('--c', a.cor);
     $('alOlho').textContent = 'Hora de sair';
     $('alTitulo').textContent = a.nome;
-    $('alDet').innerHTML = 'Começa às <b>' + a.hIni + '</b> · ' + esc(a.local) + '<br>Prof. ' + esc(a.prof) + (a.status === 'aviso' ? '<br><span style="color:var(--ouro)">' + esc(a.nota) + '</span>' : '');
+    $('alDet').innerHTML = (a.saidaAte ? 'Saia até <b>' + hhmm(a.saidaAte) + '</b> · ' : '') + 'Começa às <b>' + a.hIni + '</b> · ' + esc(a.local) + '<br>Prof. ' + esc(a.prof) + (a.status === 'aviso' ? '<br><span style="color:var(--ouro)">' + esc(a.nota) + '</span>' : '');
     $('alLevar').style.display = '';
     $('alChips').innerHTML = ((dados && dados.levar) || []).map(function (x, i) { return '<button data-c="' + i + '">' + esc(x) + '</button>'; }).join('');
     $('alSim').textContent = 'Estou saindo';
@@ -975,6 +1054,7 @@ $('fEncerrar').onclick = function () { foco = null; ultimoMov = Date.now(); esta
 [].forEach.call(document.querySelectorAll('[data-fechar]'), function (b) {
   b.onclick = function () { b.closest('.folha').classList.remove('on'); };
 });
+$('mini').onclick = function () { var b = document.querySelector('.abas [data-vista=vMes]'); if (b) b.click(); };
 $('bFoco').onclick = function () { $('folhaFoco').classList.add('on'); };
 [].forEach.call(document.querySelectorAll('#folhaFoco [data-min]'), function (b) {
   b.onclick = function () { $('folhaFoco').classList.remove('on'); iniciarFoco(+b.getAttribute('data-min')); };
