@@ -1251,6 +1251,8 @@ function emailsImportantes_() {
       return {
         de: nomeRemetente_(o.de),
         assunto: limparAssunto_(o.assunto || '') || '(sem assunto)',
+        texto: String(o.corpo || ult.getPlainBody() || '').replace(/\[PONTE-UFSJ\][^\n]*/g, '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 4000),
+        lido: !th.isUnread(),
         hora: Utilities.formatDate(th.getLastMessageDate(), TZ, 'dd/MM HH:mm')
       };
     })
