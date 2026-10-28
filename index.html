@@ -506,7 +506,7 @@
   <h2 id="muTitulo">Manhã · Atelier</h2>
   <p id="muFrase"></p>
   <ol class="mu-lista" id="muLista"></ol>
-  <div class="folha-botoes"><button id="muRefazer">Montar outra</button><button data-fechar>Fechar</button><button class="pri dir" id="muTocar">Tocar aqui</button></div>
+  <div class="folha-botoes"><button id="muRefazer">Montar outra</button><button data-fechar>Fechar</button><button class="dir" id="muApp">Abrir no YouTube Music</button><button class="pri" id="muTocar">Tocar aqui</button></div>
 </div></div>
 
 <div class="folha" id="folhaAcao"><div class="folha-caixa">
@@ -1057,6 +1057,14 @@ new MutationObserver(function () {
 $('bMusica').onclick = function (e) {
   e.stopPropagation(); renderMusica(dados && dados.musica);
   $('folhaMusica').classList.add('on'); ultimoMov = Date.now();
+};
+$('muApp').onclick = function () {   // no app o Premium sempre vale (sem anúncios)
+  var m = dados && dados.musica; if (!m || !m.id) return;
+  fecharPlayer(); $('folhaMusica').classList.remove('on');
+  var web = 'https://music.youtube.com/playlist?list=' + m.id;
+  var intent = 'intent://music.youtube.com/playlist?list=' + m.id + '#Intent;scheme=https;package=com.google.android.apps.youtube.music;S.browser_fallback_url=' + encodeURIComponent(web) + ';end';
+  try { if (typeof fully !== 'undefined' && fully.startIntent) { fully.startIntent(intent); return; } } catch (e) {}
+  window.open(web, '_blank');
 };
 $('muTocar').onclick = function () { $('folhaMusica').classList.remove('on'); tocarPlaylist(); };
 $('muLista').onclick = function (e) {   // tocar a partir de uma música da lista
