@@ -292,27 +292,30 @@
   .rem-ed input { font: inherit; font-size: 1.3vw; color: var(--tinta); background: #12110f; border: 1px solid var(--linha2); border-radius: .7vw; padding: 1.3vh .9vw; width: 100%; }
   .rem-ed .rotulos { display: grid; grid-template-columns: 1.5fr 1fr 1.2fr 3vw; gap: .8vw; font-size: .9vw; letter-spacing: .14em; text-transform: uppercase; color: var(--apagado); }
   .rem-ed .x { font-size: 1.8vw; color: var(--apagado); }
-  /* ---------- player de música ---------- */
-  .player { position: fixed; top: 3vh; right: 1.6vw; width: 21vw; z-index: 25; display: none; background: #0d0c0b; border: 1px solid var(--linha2);
-    border-radius: 1.2vw; padding: 1vw; box-shadow: 0 1vh 4vh rgba(0,0,0,.6); transition: opacity .6s; }
-  body.tocando .player { display: block; }
-  body.m-noite .player { opacity: .28; }
+  /* ---------- player de música: barra inferior ---------- */
+  .player { position: fixed; left: 0; right: 0; bottom: 0; height: 8.6vh; z-index: 25; display: none; align-items: center; gap: 1.4vw;
+    padding: 0 2.2vw; background: #000; border-top: 1px solid var(--linha); transition: opacity .6s; }
+  body.tocando .player { display: flex; }
+  body.tocando .tela { bottom: 8.6vh; }
+  body.m-noite .player { opacity: .25; }
   body.m-noite.espiando .player { opacity: .7; }
-  .pl-video { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: .7vw; overflow: hidden; background: #000; }
-  .pl-video iframe, .pl-video > div { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-  .pl-info { margin-top: 1.2vh; }
-  .pl-info .olho { font-size: .78vw; }
-  .pl-tit { font-family: var(--serif); font-size: 1.55vw; line-height: 1.15; margin-top: .4vh; color: var(--tinta);
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .pl-art { font-size: .95vw; color: var(--suave); margin-top: .3vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pl-barra { height: 2px; background: var(--linha2); margin-top: 1.2vh; border-radius: 2px; overflow: hidden; }
+  .pl-capa { width: 5.6vh; height: 5.6vh; border-radius: .5vw; object-fit: cover; background: #111; flex: none; }
+  .pl-info { min-width: 0; flex: 0 1 30vw; display: flex; flex-direction: column; justify-content: center; }
+  .pl-tit { font-family: var(--serif); font-size: 1.5vw; line-height: 1.1; color: var(--tinta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pl-art { font-size: .9vw; color: var(--suave); margin-top: .3vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pl-art em { font-style: normal; color: var(--ouro); }
+  .pl-ctrl { display: flex; align-items: center; gap: .6vw; flex: none; }
+  .pl-ctrl button { width: 3.4vw; height: 3.4vw; border-radius: 50%; display: grid; place-items: center; color: var(--tinta); }
+  .pl-ctrl button svg { width: 1.4vw; height: 1.4vw; }
+  .pl-ctrl button.pp { width: 3.9vw; height: 3.9vw; border: 1px solid var(--linha2); }
+  .pl-ctrl button:active { background: rgba(236, 230, 219, .08); }
+  .pl-tempo { flex: 1; display: flex; align-items: center; gap: .9vw; min-width: 0; font-size: .85vw; color: var(--apagado); font-variant-numeric: tabular-nums; }
+  .pl-barra { flex: 1; height: 2px; background: var(--linha2); border-radius: 2px; overflow: hidden; }
   .pl-barra i { display: block; height: 100%; width: 0; background: var(--ouro); transition: width 1s linear; }
-  .pl-ctrl { display: flex; align-items: center; justify-content: space-between; margin-top: 1.2vh; }
-  .pl-ctrl button { width: 3.6vw; height: 3.6vw; border-radius: 50%; display: grid; place-items: center; color: var(--tinta); border: 1px solid transparent; }
-  .pl-ctrl button svg { width: 1.6vw; height: 1.6vw; }
-  .pl-ctrl button.pp { width: 4.4vw; height: 4.4vw; background: var(--tinta); color: #12110f; }
-  .pl-ctrl button.x { color: var(--apagado); }
-  .pl-ctrl button:active { border-color: var(--linha2); }
+  .pl-x { color: var(--apagado); width: 2.8vw; height: 2.8vw; display: grid; place-items: center; flex: none; }
+  .pl-x svg { width: 1.2vw; height: 1.2vw; }
+  /* o vídeo fica escondido (só o som) */
+  .pl-video { position: fixed; left: 0; bottom: 0; width: 200px; height: 200px; opacity: .01; pointer-events: none; z-index: -1; }
   .mu-lista { margin-top: 2.4vh; columns: 2; column-gap: 2.6vw; font-size: 1.1vw; line-height: 1.45; color: var(--tinta); padding-left: 2vw; }
   .mu-lista li { break-inside: avoid; margin-bottom: .9vh; cursor: pointer; }
   .mu-lista li small { display: block; color: var(--apagado); font-size: .9vw; }
@@ -487,18 +490,15 @@
 
 <div class="player" id="player">
   <div class="pl-video"><div id="ytFrame"></div></div>
-  <div class="pl-info">
-    <div class="olho" id="plOlho">Tocando</div>
-    <div class="pl-tit" id="plTit"></div>
-    <div class="pl-art" id="plArt"></div>
-    <div class="pl-barra"><i id="plBarra"></i></div>
-  </div>
+  <img class="pl-capa" id="plCapa" alt="">
+  <div class="pl-info"><div class="pl-tit" id="plTit"></div><div class="pl-art" id="plArt"></div></div>
   <div class="pl-ctrl">
     <button id="plAnt" aria-label="Anterior"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
     <button class="pp" id="plPP" aria-label="Pausar"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button>
     <button id="plProx" aria-label="Próxima"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5l11 7-11 7z"/></svg></button>
-    <button class="x" id="plFechar" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
+  <div class="pl-tempo"><span id="plAgora">0:00</span><div class="pl-barra"><i id="plBarra"></i></div><span id="plTotal">0:00</span><span id="plOlho"></span></div>
+  <button class="pl-x" id="plFechar" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
 </div>
 
 <div class="folha" id="folhaMusica"><div class="folha-caixa">
@@ -998,7 +998,7 @@ function tocarPlaylist(inicio) {
   carregarYT(function () {
     if (yt) return;
     yt = new YT.Player('ytFrame', {
-      width: '100%', height: '100%',
+      width: 200, height: 200,
       playerVars: { autoplay: 1, controls: 0, playsinline: 1, rel: 0, modestbranding: 1, iv_load_policy: 3, fs: 0, disablekb: 1 },
       events: {
         onReady: function () { ytPronto = true; yt.setVolume(+ler('volume') || 80); if (ytFila) { yt.loadPlaylist(ytFila.ids, ytFila.idx); ytFila = null; } },
@@ -1006,7 +1006,7 @@ function tocarPlaylist(inicio) {
           plTocando = e.data === 1;
           $('plPP').innerHTML = plTocando ? ICO_PAUSA : ICO_PLAY;
           if (e.data === 1 || e.data === -1) mostrarFaixa(yt.getPlaylistIndex());
-          if (e.data === 0 && yt.getPlaylistIndex() >= plFaixas.length - 1) $('plOlho').textContent = 'Fim da playlist';
+          if (e.data === 0 && yt.getPlaylistIndex() >= plFaixas.length - 1) $('plOlho').textContent = 'fim';
         },
         onError: function () { setTimeout(function () { try { yt.nextVideo(); } catch (x) {} }, 800); }   // vídeo bloqueado para tocar fora do YouTube: pula
       }
@@ -1014,14 +1014,20 @@ function tocarPlaylist(inicio) {
   });
   clearInterval(plTimer);
   plTimer = setInterval(function () {
-    try { var d = yt.getDuration(), c = yt.getCurrentTime(); $('plBarra').style.width = d ? (100 * c / d) + '%' : '0'; } catch (e) {}
+    try {
+      var d = yt.getDuration(), c = yt.getCurrentTime();
+      $('plBarra').style.width = d ? (100 * c / d) + '%' : '0';
+      $('plAgora').textContent = mmss(c); $('plTotal').textContent = mmss(d);
+    } catch (e) {}
   }, 1000);
 }
+function mmss(x) { x = Math.max(0, Math.floor(x || 0)); return Math.floor(x / 60) + ':' + ('0' + x % 60).slice(-2); }
 function mostrarFaixa(i) {
   var f = plFaixas[i] || plFaixas[0]; if (!f) return;
-  $('plOlho').textContent = 'Manhã · Atelier — ' + ((i || 0) + 1) + ' de ' + plFaixas.length;
+  $('plOlho').textContent = ((i || 0) + 1) + '/' + plFaixas.length;
+  if ($('plCapa').getAttribute('data-id') !== f.id) { $('plCapa').src = 'https://i.ytimg.com/vi/' + f.id + '/hqdefault.jpg'; $('plCapa').setAttribute('data-id', f.id); }
   $('plTit').textContent = f.t.replace(/\s*[\(\[](clipe|official|oficial|audio|áudio|lyric|visualizer|letra)[^\)\]]*[\)\]]/gi, '').replace(new RegExp('^' + f.a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[-–—]\\s*', 'i'), '');
-  $('plArt').textContent = f.a + (f.nova ? ' · nova pra você' : '');
+  $('plArt').innerHTML = esc(f.a) + (f.nova ? ' · <em>nova pra você</em>' : '');
 }
 function pausarMusica() { try { yt.pauseVideo(); } catch (e) {} }
 function fecharPlayer() {
