@@ -178,6 +178,18 @@
   .mes-rodape { display: flex; gap: 1.6vw; font-size: .85vw; color: var(--apagado); padding-top: 1vh; }
   .mes-rodape i { display: inline-block; width: .55vw; height: .55vw; border-radius: 50%; margin-right: .4vw; vertical-align: .05em; }
 
+  /* e-mails */
+  .emails { list-style: none; overflow: auto; }
+  .emails li { display: grid; grid-template-columns: 7vw 1fr; gap: 1.2vw; padding: 1.4vh .8vw; border-bottom: 1px solid var(--linha); border-radius: .6vw; }
+  .emails .h { font-size: 1.05vw; color: var(--apagado); }
+  .emails .de { font-size: 1.1vw; color: var(--suave); }
+  .emails .as { font-family: var(--serif); font-size: 1.7vw; line-height: 1.15; margin-top: .3vh; }
+  .emails li.lido { opacity: .5; }
+  .emails li.novo { animation: lembra 7s ease-in-out infinite; }
+  @keyframes lembra { 0%, 100% { background: transparent; } 50% { background: rgba(236, 230, 219, .06); } }
+  .leitura { width: 80vw; max-height: 90vh; }
+  .leitura h2 { margin-top: 1vh; }
+  .le-texto { margin-top: 2.4vh; font-size: 1.55vw; line-height: 1.7; color: var(--tinta); white-space: pre-wrap; max-height: 62vh; overflow: auto; }
   /* semana */
   .semana { position: relative; flex: 1; display: grid; grid-template-columns: 4vw repeat(5, 1fr); grid-template-rows: auto 1fr; gap: 0 .6vw; min-height: 0; }
   .sem-cab { grid-row: 1; text-align: center; font-size: .98vw; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--apagado); padding-bottom: 1vh; }
@@ -319,6 +331,7 @@
         <button class="on" data-vista="vHoje">Hoje</button>
         <button data-vista="vSemana">Semana</button>
         <button data-vista="vMes">Mês</button>
+        <button data-vista="vEmails" id="abaEmails">E-mails</button>
       </nav>
       <div class="vista on" id="vHoje">
         <div class="dia-todo" id="diaTodo"></div>
@@ -331,6 +344,7 @@
       </div>
       <div class="vista" id="vSemana"><div class="semana" id="semana"></div></div>
       <div class="vista" id="vMes"><div class="mes" id="mes"></div></div>
+      <div class="vista" id="vEmails"><ul class="emails" id="emails"></ul></div>
     </section>
   </div>
   <footer class="p-rodape">
@@ -410,6 +424,12 @@
   </div>
 </div></div>
 
+<div class="folha" id="folhaEmail"><div class="folha-caixa leitura">
+  <div class="olho" id="leDe"></div>
+  <h2 id="leAssunto"></h2>
+  <div class="le-texto" id="leTexto"></div>
+  <div class="folha-botoes"><button class="pri dir" data-fechar>Fechar</button></div>
+</div></div>
 <button id="tocar">Toque para ouvir</button>
 <div id="veu"></div>
 
@@ -589,6 +609,7 @@ function render() {
   renderSemana();
   renderMini();
   renderMes();
+  renderEmails();
   renderTempo();
 }
 
@@ -757,6 +778,23 @@ function renderMes() {
   for (var j = 0; j < resto; j++) h += '<div class="c fora"></div>';
   $('mes').innerHTML = h;
 }
+
+function renderEmails() {
+  var l = ((dados && dados.emails && dados.emails.lista) || []), novos = l.filter(function (m) { return !m.lido; }).length;
+  $('abaEmails').textContent = 'E-mails' + (novos ? ' · ' + novos : '');
+  $('emails').innerHTML = l.length ? l.map(function (m, i) {
+    return '<li class="' + (m.lido ? 'lido' : 'novo') + '" data-m="' + i + '"><span class="h num">' + esc(String(m.hora).slice(6)) + '</span>' +
+      '<span><div class="de">' + esc(m.de) + '</div><div class="as">' + esc(m.assunto) + '</div></span></li>';
+  }).join('') : '<li class="vazio" style="display:block">Nenhum e-mail importante esperando.</li>';
+}
+$('emails').onclick = function (e) {
+  var li = e.target.closest('[data-m]'); if (!li) return;
+  var m = dados.emails.lista[+li.getAttribute('data-m')];
+  $('leDe').textContent = m.de + ' · ' + m.hora;
+  $('leAssunto').textContent = m.assunto;
+  $('leTexto').textContent = m.texto || '(sem texto)';
+  $('folhaEmail').classList.add('on'); ultimoMov = Date.now();
+};
 
 function renderQuadroProx() {
   var s = situacao(), t = Date.now(), el = $('qProx'), urg = false, h = '';
