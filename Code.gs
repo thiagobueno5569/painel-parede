@@ -1488,9 +1488,24 @@ function musicasCurtidas_() {
 }
 
 function buscarMusica_(q) {
-  const r = YouTube.Search.list('snippet', { q: q, type: 'video', videoCategoryId: '10', maxResults: 1 });
-  const v = (r.items || [])[0];
-  return v ? { id: v.id.videoId, t: v.snippet.title, a: v.snippet.channelTitle.replace(/ - Topic$/, '') } : null;
+  const partes = String(q).split(/\s+[-–—]\s+/);
+  const artista = semAcento_(partes[0] || ''), musica = semAcento_(partes.slice(1).join(' ') || q);
+  const r = YouTube.Search.list('snippet', { q: q + ' audio', type: 'video', videoCategoryId: '10', maxResults: 6, regionCode: 'BR' });
+  let melhor = null, nota = -99;
+  (r.items || []).forEach(function (v) {
+    const canal = v.snippet.channelTitle || '', tit = semAcento_(v.snippet.title), c = semAcento_(canal);
+    const temArtista = artista && (c.indexOf(artista) >= 0 || tit.indexOf(artista) >= 0 || artista.indexOf(c.replace(/ - topic$|oficial|official|vevo/g, '').trim()) >= 0);
+    const palavras = musica.split(/\s+/).filter(function (w) { return w.length > 2; });
+    const temMusica = palavras.length && palavras.filter(function (w) { return tit.indexOf(w) >= 0; }).length >= Math.ceil(palavras.length / 2);
+    if (!temArtista || !temMusica) return;
+    let n = 0;
+    if (/ - Topic$/.test(canal)) n += 4;
+    if (/oficial|official|vevo/i.test(canal)) n += 2;
+    if (/ao vivo|live|lyric|letra|cover|remix|karaok|parad[aã]o|sped up|slowed|8d|reac/i.test(v.snippet.title)) n -= 4;
+    if (n > nota) { nota = n; melhor = v; }
+  });
+  return melhor ? { id: melhor.id.videoId, t: melhor.snippet.title.replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"'),
+    a: melhor.snippet.channelTitle.replace(/ - Topic$/, '') } : null;
 }
 
 /** Monta (ou refaz) a playlist do dia. forcar=true ignora o horário. */
@@ -1520,7 +1535,7 @@ function montarPlaylistManha(forcar) {
     'Escolha ' + Math.max(0, M.faixas - M.novas) + ' faixas da lista CURTIDAS (pelos índices, já na ordem de tocar) e sugira ' + M.novas +
     ' músicas NOVAS que ele provavelmente vai gostar pelo mesmo gosto (artistas parecidos ou outras faixas dos mesmos), que não estejam na lista. ' +
     (M.gostoExtra ? 'Ele também disse que gosta de: ' + M.gostoExtra + '. ' : '') +
-    'Evite músicas longas demais, ao vivo ou versões estranhas. ' +
+    'Evite músicas longas demais, ao vivo ou versões estranhas. Em "busca" use exatamente "Nome do artista - Nome da música" (versão de estúdio). ' +
     'Responda SÓ JSON: {"ordem":[índices],"novas":[{"busca":"Artista - Música","depoisDe":índice da posição na ordem}],' +
     '"frase":"uma frase curta e leve (máx. 12 palavras) descrevendo a playlist de hoje"}\n\nCURTIDAS: ' +
     JSON.stringify(candidatas.map(function (m, i) { return i + ': ' + m.a + ' — ' + m.t; })), 0.9);
