@@ -168,6 +168,7 @@ function api_(acao, p) {
   else if (acao === 'desfazer') marcarRemedio_(p.id, p.hora, false);
   else if (acao === 'remedios') salvarRemedios_(p.lista);
   else if (acao === 'voz') return vozNatural_(p.texto);
+  else if (acao === 'refazer') refazerFaculdade();
   return getBriefing();
 }
 
@@ -887,7 +888,9 @@ function faculdadeHeuristica_(m) {
 
   // "sem aula": pode ter várias datas ("nos dias 28/10 e 30/10"); só valem datas DEPOIS da frase
   if (tipo === 'sem_aula') {
-    const trecho = texto.slice(pos, pos + 320);
+    // só a frase do aviso (até o ponto final ou a quebra de linha)
+    const resto = texto.slice(pos), fimFrase = resto.slice(8).search(/[.!?](\s|$|(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ]))|\n/);
+    const trecho = resto.slice(0, fimFrase >= 0 ? fimFrase + 8 : 320).slice(0, 320);
     let datas = acharDatas_(trecho, base);
     if (!datas.length) datas = acharDatas_(texto.slice(Math.max(0, pos - 160), pos), base).slice(-1);
     const geral = !disc && /suspens|calend[aá]rio|todas|feriado|ponto\s+facultativo|recesso/i.test(trecho + assunto);
@@ -922,6 +925,15 @@ function acharDatas_(txt, base) {
   while ((m = r2.exec(txt))) {
     const mes = MESES.indexOf(m[2].toLowerCase().replace('marco', 'março')) + 1;
     m[1].match(/\d{1,2}/g).forEach(function (dd) { add(montarData_(+dd, mes, m[3], base)); });
+  }
+  // "dia 30", "dias 28 e 30", "no dia 26 e no dia 28" (mês do e-mail)
+  const r3 = /\bdias?\s+((?:\d{1,2}\s*(?:,|e|a)\s*(?:(?:no|o)\s+dia\s+)?)*\d{1,2})\b(?!\s*\/|\s*º?\s+de\s+)/gi;
+  while ((m = r3.exec(txt))) {
+    m[1].match(/\d{1,2}/g).forEach(function (dd) {
+      let d = new Date(base.getFullYear(), base.getMonth(), +dd);
+      if (d < new Date(base.getTime() - 3 * 86400000)) d = new Date(base.getFullYear(), base.getMonth() + 1, +dd);
+      add(d);
+    });
   }
   return out.sort(function (a, b) { return a - b; });
 }
