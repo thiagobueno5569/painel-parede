@@ -292,6 +292,11 @@
   .rem-ed input { font: inherit; font-size: 1.3vw; color: var(--tinta); background: #12110f; border: 1px solid var(--linha2); border-radius: .7vw; padding: 1.3vh .9vw; width: 100%; }
   .rem-ed .rotulos { display: grid; grid-template-columns: 1.5fr 1fr 1.2fr 3vw; gap: .8vw; font-size: .9vw; letter-spacing: .14em; text-transform: uppercase; color: var(--apagado); }
   .rem-ed .x { font-size: 1.8vw; color: var(--apagado); }
+  .mu-lista { margin-top: 2.4vh; columns: 2; column-gap: 2.6vw; font-size: 1.1vw; line-height: 1.45; color: var(--tinta); padding-left: 2vw; }
+  .mu-lista li { break-inside: avoid; margin-bottom: .9vh; }
+  .mu-lista li small { display: block; color: var(--apagado); font-size: .9vw; }
+  .mu-lista li.nova::marker { color: #c8a96a; }
+  .mu-lista li.nova small::after { content: ' · nova pra você'; color: #c8a96a; }
   .folha-botoes { display: flex; gap: 1vw; margin-top: 3.4vh; }
   .folha-botoes button { font-size: 1.25vw; font-weight: 500; padding: 1.5vh 2vw; border-radius: 99px; border: 1px solid var(--linha2); }
   .folha-botoes button.pri { background: var(--tinta); color: #12110f; border-color: var(--tinta); }
@@ -364,6 +369,7 @@
   </div>
   <footer class="p-rodape">
     <button class="pri" id="bPerg"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Perguntar</button>
+    <button id="bMusica"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>Música</button>
     <button id="bFalar">Ouvir o dia</button>
     <button id="bFoco">Modo foco</button>
     <button id="bRem">Remédios</button>
@@ -456,6 +462,14 @@
     <button class="pri" id="pgEnviar">Enviar</button>
   </div>
   <div class="folha-botoes"><button id="pgEmail" style="display:none">Abrir o e-mail</button><button class="dir" data-fechar>Fechar</button></div>
+</div></div>
+
+<div class="folha" id="folhaMusica"><div class="folha-caixa">
+  <div class="olho" id="muOlho">Playlist da manhã</div>
+  <h2 id="muTitulo">Manhã · Atelier</h2>
+  <p id="muFrase"></p>
+  <ol class="mu-lista" id="muLista"></ol>
+  <div class="folha-botoes"><button id="muRefazer">Montar outra</button><button data-fechar>Fechar</button><button class="pri dir" id="muTocar">Tocar no YouTube Music</button></div>
 </div></div>
 
 <div class="folha" id="folhaAcao"><div class="folha-caixa">
@@ -869,6 +883,7 @@ function enviarPergunta() {
     $('pgResp').textContent = r.resposta || 'Não encontrei a resposta.';
     if (r.resposta) falar(r.resposta);
     var abas = { hoje: 'vHoje', semana: 'vSemana', mes: 'vMes', emails: 'vEmails' };
+    if (r.mostrar === 'musica') { setTimeout(function () { $('folhaPerg').classList.remove('on'); tocarPlaylist(); }, 2500); }
     if (abas[r.mostrar]) { var b = document.querySelector('.abas [data-vista=' + abas[r.mostrar] + ']'); if (b) b.click(); }
     $('pgEmail').style.display = (r.email !== null && r.email !== undefined && dados && dados.emails.lista[r.email]) ? '' : 'none';
     if (r.acao) setTimeout(function () { abrirAcao(r.acao); }, 600);
@@ -907,6 +922,40 @@ $('acAprovar').onclick = function () {
   }, function () { bt.disabled = false; status('não consegui salvar — tente de novo'); });
 };
 $('bPerg').onclick = function (e) { e.stopPropagation(); abrirPergunta(); };
+
+/* ---------- Playlist da manhã ---------- */
+function renderMusica(m) {
+  if (!m || m.erro) {
+    $('muFrase').textContent = m && m.erro ? m.erro : 'A playlist ainda não foi montada hoje.';
+    $('muLista').innerHTML = ''; $('muTocar').disabled = !(m && m.id); return;
+  }
+  var hoje = new Date(), iso = hoje.getFullYear() + '-' + ('0' + (hoje.getMonth() + 1)).slice(-2) + '-' + ('0' + hoje.getDate()).slice(-2);
+  $('muOlho').textContent = m.data === iso ? 'Playlist de hoje · ' + m.faixas.length + ' músicas' : 'Última playlist · ' + m.data.split('-').reverse().slice(0, 2).join('/');
+  $('muFrase').textContent = m.frase || '';
+  $('muLista').innerHTML = m.faixas.map(function (f) {
+    return '<li' + (f.nova ? ' class="nova"' : '') + '>' + esc(f.t) + '<small>' + esc(f.a) + '</small></li>';
+  }).join('');
+  $('muTocar').disabled = false;
+}
+function tocarPlaylist() {
+  var m = dados && dados.musica; if (!m || !m.id) return;
+  var web = 'https://music.youtube.com/playlist?list=' + m.id;
+  var intent = 'intent://music.youtube.com/playlist?list=' + m.id + '#Intent;scheme=https;package=com.google.android.apps.youtube.music;S.browser_fallback_url=' + encodeURIComponent(web) + ';end';
+  try { if (typeof fully !== 'undefined' && fully.startIntent) { fully.startIntent(intent); return; } } catch (e) {}
+  location.href = /Android/.test(navigator.userAgent) ? intent : web;
+}
+$('bMusica').onclick = function (e) {
+  e.stopPropagation(); renderMusica(dados && dados.musica);
+  $('folhaMusica').classList.add('on'); ultimoMov = Date.now();
+};
+$('muTocar').onclick = function () { $('folhaMusica').classList.remove('on'); tocarPlaylist(); };
+$('muRefazer').onclick = function () {
+  var bt = this; bt.disabled = true; bt.textContent = 'Montando… (uns 30 s)';
+  api('musica').then(function (m) {
+    if (dados) dados.musica = m; try { guardar('cache', JSON.stringify(dados)); } catch (e) {}
+    renderMusica(m); bt.disabled = false; bt.textContent = 'Montar outra';
+  }, function () { bt.disabled = false; bt.textContent = 'Montar outra'; status('não consegui montar agora'); });
+};
 $('pgMic').onclick = function () { ouvir(); };
 $('pgEnviar').onclick = enviarPergunta;
 $('pgTexto').onkeydown = function (e) { if (e.key === 'Enter') enviarPergunta(); };
