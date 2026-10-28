@@ -99,7 +99,7 @@
   .agora.urgente .olho { color: var(--alerta); }
   .aviso-aula { margin-top: 1.2vh; font-size: 1.05vw; color: var(--ouro); }
 
-  .rem { border-top: 1px solid var(--linha); padding-top: 2.2vh; margin-top: 3vh; min-height: 0; }
+  .rem { flex: none; border-top: 1px solid var(--linha); padding-top: 2.2vh; margin-top: 3vh; }
   .rem-lista { list-style: none; margin-top: 1.2vh; }
   .rem-lista li { display: grid; grid-template-columns: 5vw 1fr auto; align-items: center; gap: 1vw; padding: 1.05vh 0; border-bottom: 1px solid var(--linha); }
   .rem-lista li:last-child { border-bottom: 0; }
@@ -146,7 +146,7 @@
   .amanha-linha b { color: var(--tinta); font-weight: 500; }
 
   /* mini calendário (coluna da esquerda) */
-  .mini { margin-top: auto; border-top: 1px solid var(--linha); padding: 1.8vh 0 .4vh; }
+  .mini { flex: none; margin-top: auto; border-top: 1px solid var(--linha); padding: 1.8vh 0 .4vh; }
   .mini-topo { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .8vh; }
   .mini-topo b { font-family: var(--serif); font-weight: 400; font-size: 1.6vw; text-transform: capitalize; }
   .mini-topo span { font-size: .9vw; color: var(--apagado); letter-spacing: .14em; text-transform: uppercase; }
@@ -1038,8 +1038,18 @@ $('plPP').onclick = function (e) { e.stopPropagation(); ultimoMov = Date.now(); 
 $('plProx').onclick = function (e) { e.stopPropagation(); ultimoMov = Date.now(); try { yt.nextVideo(); } catch (x) {} };
 $('plAnt').onclick = function (e) { e.stopPropagation(); ultimoMov = Date.now(); try { yt.getCurrentTime() > 5 ? yt.seekTo(0) : yt.previousVideo(); } catch (x) {} };
 $('plFechar').onclick = function (e) { e.stopPropagation(); fecharPlayer(); };
+// coluna da esquerda: se não couber tudo, o mini calendário sai (os remédios são mais importantes; o mês está na aba Mês)
+function ajustarColuna() {
+  var mini = $('mini'); if (!mini) return;
+  var col = mini.parentNode;
+  mini.style.display = '';
+  if (col.scrollHeight > col.clientHeight + 2) mini.style.display = 'none';
+}
+window.addEventListener('resize', ajustarColuna);
+setInterval(ajustarColuna, 5000);
 // abaixa a música enquanto a assistente fala
 new MutationObserver(function () {
+  ajustarColuna();
   if (!yt || !ytPronto) return;
   var falando = document.body.classList.contains('falando');
   try { yt.setVolume(falando ? 18 : (+ler('volume') || 80)); } catch (e) {}
