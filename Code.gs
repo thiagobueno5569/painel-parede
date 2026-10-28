@@ -169,7 +169,75 @@ function api_(acao, p) {
   else if (acao === 'remedios') salvarRemedios_(p.lista);
   else if (acao === 'voz') return vozNatural_(p.texto);
   else if (acao === 'refazer') refazerFaculdade();
+  else if (acao === 'perguntar') return perguntar_(p.texto);
+  else if (acao === 'adicionar') adicionar_(p.acao);
   return getBriefing();
+}
+
+// ---------------------------------------------------------- ASSISTENTE POR VOZ
+
+function contexto_() {
+  const b = getBriefing();
+  function hm(t) { return t ? Utilities.formatDate(new Date(t), TZ, 'dd/MM HH:mm') : ''; }
+  return {
+    agora: Utilities.formatDate(new Date(), TZ, "EEEE, dd/MM/yyyy HH:mm"),
+    aulasHoje: b.aulasHoje.map(function (a) { return a.nome + ' ' + a.hIni + '-' + a.hFim + ' ' + a.local + ' (' + a.status + (a.nota ? ': ' + a.nota : '') + ') sair ' + hm(a.saida); }),
+    aulasAmanha: b.aulasAmanha.map(function (a) { return a.nome + ' ' + a.hIni + '-' + a.hFim + ' (' + a.status + ')'; }),
+    gradeSemanal: gradeTexto_(),
+    agendaHoje: b.hoje.map(function (e) { return e.titulo + ' ' + (e.diaInteiro ? 'dia todo' : e.hora); }),
+    proximosDias: b.proximos.map(function (e) { return e.dia + ' ' + (e.diaInteiro ? '' : e.hora) + ' ' + e.titulo; }),
+    provasPrazosAvisos: b.faculdade.map(function (e) { return e.dia + ' ' + e.hora + ' ' + e.tipo + ': ' + e.resto; }),
+    mes: b.mes ? Object.keys(b.mes.dias).map(function (d) { return d + ': ' + b.mes.dias[d].itens.map(function (i) { return i.t; }).join(', '); }) : [],
+    remedios: b.remedios.hoje.map(function (r) { return r.nome + ' ' + r.dose + ' às ' + r.hora + (r.tomado ? ' (tomado)' : ' (pendente)'); }),
+    clima: b.clima,
+    emails: b.emails.lista.map(function (m, i) { return '#' + i + ' de ' + m.de + ' — ' + m.assunto + ' — ' + String(m.texto || '').slice(0, 700); })
+  };
+}
+
+/** Pergunta livre → { resposta, mostrar, email, acao } */
+function perguntar_(texto) {
+  texto = String(texto || '').slice(0, 500);
+  if (!texto) return { resposta: 'Não entendi a pergunta.' };
+  if (!chaveGemini_()) return { resposta: 'Para responder perguntas eu preciso da chave do Gemini.' };
+  const j = chamarGemini_(
+    'Você é a assistente pessoal de parede do ' + CONFIG.NOME + ', estudante de Engenharia Elétrica na UFSJ (São João del-Rei) com TDAH. ' +
+    'Responda em português do Brasil, curto, direto e gentil (no máximo 3 frases), usando SOMENTE os dados abaixo; se não souber, diga que não encontrou. ' +
+    'Horas sempre por extenso natural (ex.: "às 13 e 15"). ' +
+    'Se ele pedir para ADICIONAR, MARCAR, AGENDAR, LEMBRAR ou CADASTRAR algo, preencha "acao" e na resposta diga o que entendeu e peça para conferir na tela. ' +
+    'Datas relativas ("amanhã", "sexta que vem") devem ser convertidas a partir de agora. ' +
+    'Responda SÓ com JSON: {"resposta":"texto para falar","mostrar":"hoje|semana|mes|emails|nenhum","email":número do e-mail citado ou null,' +
+    '"acao":null ou {"tipo":"evento|lembrete|remedio","titulo":"","data":"YYYY-MM-DD","inicio":"HH:MM ou vazio","fim":"HH:MM ou vazio","diaInteiro":true/false,' +
+    '"local":"","lembreteMin":30,"nome":"","dose":"","horas":["HH:MM"]}}\n\n' +
+    'DADOS: ' + JSON.stringify(contexto_()) + '\n\nPEDIDO: ' + texto, 0.3);
+  if (!j) return { resposta: 'Não consegui pensar agora. Tente de novo em instantes.' };
+  return { resposta: j.resposta || '', mostrar: j.mostrar || 'nenhum', email: (j.email === 0 || j.email) ? j.email : null, acao: j.acao || null };
+}
+
+/** Grava o que foi aprovado na tela */
+function adicionar_(a) {
+  if (!a || !a.tipo) throw new Error('nada para adicionar');
+  if (a.tipo === 'remedio') {
+    const lista = listaRemedios_().slice();
+    lista.push({ nome: a.nome || a.titulo, dose: a.dose || '', horas: a.horas || [] });
+    salvarRemedios_(lista);
+    return;
+  }
+  const d = String(a.data || '').split('-');
+  if (d.length !== 3) throw new Error('data inválida');
+  const dia = new Date(+d[0], +d[1] - 1, +d[2]);
+  const cal = CalendarApp.getDefaultCalendar();
+  const op = { location: a.local || '', description: 'Adicionado por voz no Assistente de Parede.' };
+  let e;
+  if (a.diaInteiro || !a.inicio) e = cal.createAllDayEvent(a.titulo || 'Compromisso', dia, op);
+  else {
+    const ini = new Date(msHora_(dia, a.inicio));
+    const fim = a.fim ? new Date(msHora_(dia, a.fim)) : new Date(ini.getTime() + 3600000);
+    e = cal.createEvent(a.titulo || 'Compromisso', ini, fim > ini ? fim : new Date(ini.getTime() + 3600000), op);
+  }
+  e.removeAllReminders();
+  const min = +a.lembreteMin;
+  if (min >= 0 && !isNaN(min)) e.addPopupReminder(min);
+  e.setTag('assistente', 'voz');
 }
 
 // ---------------------------------------------------------- VOZ NATURAL (Gemini TTS)
@@ -583,20 +651,8 @@ function extrairComGemini_(m) {
     'Se for propaganda, newsletter, recibo, cobrança sem data de compromisso ou qualquer outra coisa, responda {"evento":false}.\n\n' +
     'De: ' + m.getFrom() + '\nData do e-mail: ' + m.getDate() + '\nAssunto: ' + m.getSubject() + '\n\n' +
     (m.getPlainBody() || '').slice(0, 6000);
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + CONFIG.GEMINI_MODELO +
-    ':generateContent?key=' + chaveGemini_();
-  const r = UrlFetchApp.fetch(url, {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    payload: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0 }
-    })
-  });
-  if (r.getResponseCode() !== 200) {
-    console.warn('Gemini falhou, usando regras: ' + r.getContentText().slice(0, 300));
-    return extrairHeuristica_(m);
-  }
-  const j = JSON.parse(JSON.parse(r.getContentText()).candidates[0].content.parts[0].text);
+  const j = chamarGemini_(prompt);
+  if (!j) return extrairHeuristica_(m);
   if (!j.evento || !j.inicio) return null;
   const ini = lerIso_(j.inicio);
   if (!ini) return null;
@@ -963,21 +1019,30 @@ function acharDatas_(txt, base) {
   return out.sort(function (a, b) { return a - b; });
 }
 
-function chamarGemini_(prompt) {
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + CONFIG.GEMINI_MODELO +
-    ':generateContent?key=' + chaveGemini_();
-  const r = UrlFetchApp.fetch(url, {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    payload: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0 }
-    })
-  });
-  if (r.getResponseCode() !== 200) {
-    console.warn('Gemini falhou: ' + r.getContentText().slice(0, 300));
-    return null;
+/** Chama o Gemini (texto → JSON). Tenta modelos em ordem e lembra o que funcionou. */
+function chamarGemini_(prompt, temperatura) {
+  const props = PropertiesService.getScriptProperties();
+  const salvo = props.getProperty('GEMINI_MODELO_OK');
+  const modelos = [salvo, CONFIG.GEMINI_MODELO, 'gemini-3.8-flash', 'gemini-3.1-flash', 'gemini-flash-latest', 'gemini-2.5-flash']
+    .filter(function (m, i, l) { return m && l.indexOf(m) === i; });
+  for (let i = 0; i < modelos.length; i++) {
+    const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + modelos[i] + ':generateContent', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { 'x-goog-api-key': chaveGemini_() },
+      payload: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json', temperature: temperatura || 0 }
+      })
+    });
+    const cod = r.getResponseCode();
+    if (cod === 200) {
+      if (salvo !== modelos[i]) props.setProperty('GEMINI_MODELO_OK', modelos[i]);
+      try { return JSON.parse(JSON.parse(r.getContentText()).candidates[0].content.parts[0].text); } catch (e) { return null; }
+    }
+    console.warn('Gemini ' + modelos[i] + ' falhou: ' + cod + ' ' + r.getContentText().slice(0, 200));
+    if (cod !== 404 && cod !== 400) return null;   // erro de cota/rede: não adianta tentar outro
   }
-  return JSON.parse(JSON.parse(r.getContentText()).candidates[0].content.parts[0].text);
+  return null;
 }
 
 function faculdadeGemini_(m) {
