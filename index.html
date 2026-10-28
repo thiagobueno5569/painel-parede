@@ -190,6 +190,21 @@
   .leitura { width: 80vw; max-height: 90vh; }
   .leitura h2 { margin-top: 1vh; }
   .le-texto { margin-top: 2.4vh; font-size: 1.55vw; line-height: 1.7; color: var(--tinta); white-space: pre-wrap; max-height: 62vh; overflow: auto; }
+  /* perguntar */
+  .perg { width: 74vw; }
+  .pg-pergunta { font-size: 1.3vw; color: var(--suave); margin-top: 1.2vh; min-height: 2vh; }
+  .pg-resp { font-family: var(--serif); font-size: 2.4vw; line-height: 1.3; margin-top: 1.6vh; min-height: 6vh; }
+  .pg-linha { display: grid; grid-template-columns: 1fr auto auto; gap: .8vw; margin-top: 3vh; }
+  .pg-linha input, .ac-form input, .ac-form select { font: inherit; font-size: 1.35vw; color: var(--tinta); background: #12110f; border: 1px solid var(--linha2); border-radius: .8vw; padding: 1.4vh 1vw; width: 100%; }
+  .pg-linha button { padding: 0 1.6vw; border-radius: 99px; border: 1px solid var(--linha2); font-size: 1.25vw; }
+  .pg-linha button.pri { background: var(--tinta); color: #12110f; }
+  body.ouvindo #pgMic { background: var(--alerta); border-color: var(--alerta); color: #12110f; }
+  body.ouvindo #pgEstado { color: var(--alerta); }
+  .ac-form { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6vh 1.2vw; margin-top: 2.4vh; }
+  .ac-form label { font-size: .95vw; letter-spacing: .14em; text-transform: uppercase; color: var(--apagado); display: grid; gap: .6vh; }
+  .ac-form .larga { grid-column: 1 / -1; }
+  .ac-form .marca { display: flex; align-items: center; gap: .8vw; text-transform: none; letter-spacing: 0; font-size: 1.25vw; color: var(--suave); }
+  .ac-form .marca input { width: auto; }
   /* semana */
   .semana { position: relative; flex: 1; display: grid; grid-template-columns: 4vw repeat(5, 1fr); grid-template-rows: auto 1fr; gap: 0 .6vw; min-height: 0; }
   .sem-cab { grid-row: 1; text-align: center; font-size: .98vw; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--apagado); padding-bottom: 1vh; }
@@ -348,7 +363,8 @@
     </section>
   </div>
   <footer class="p-rodape">
-    <button class="pri" id="bFalar">Ouvir o dia</button>
+    <button class="pri" id="bPerg"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Perguntar</button>
+    <button id="bFalar">Ouvir o dia</button>
     <button id="bFoco">Modo foco</button>
     <button id="bRem">Remédios</button>
     <button id="bAtualizar">Atualizar</button>
@@ -430,6 +446,25 @@
   <div class="le-texto" id="leTexto"></div>
   <div class="folha-botoes"><button class="pri dir" data-fechar>Fechar</button></div>
 </div></div>
+<div class="folha" id="folhaPerg"><div class="folha-caixa perg">
+  <div class="olho" id="pgEstado">Ouvindo…</div>
+  <div class="pg-pergunta" id="pgPergunta"></div>
+  <div class="pg-resp" id="pgResp"></div>
+  <div class="pg-linha">
+    <input id="pgTexto" placeholder="Fale ou escreva: “tenho aula sexta?”, “marca dentista dia 5 às 14h”" autocomplete="off">
+    <button id="pgMic" aria-label="Falar"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+    <button class="pri" id="pgEnviar">Enviar</button>
+  </div>
+  <div class="folha-botoes"><button id="pgEmail" style="display:none">Abrir o e-mail</button><button class="dir" data-fechar>Fechar</button></div>
+</div></div>
+
+<div class="folha" id="folhaAcao"><div class="folha-caixa">
+  <div class="olho">Confira antes de salvar</div>
+  <h2 id="acTitulo">Novo compromisso</h2>
+  <div class="ac-form" id="acForm"></div>
+  <div class="folha-botoes"><button data-fechar>Cancelar</button><button class="pri dir" id="acAprovar">Aprovar e salvar</button></div>
+</div></div>
+
 <button id="tocar">Toque para ouvir</button>
 <div id="veu"></div>
 
@@ -787,14 +822,95 @@ function renderEmails() {
       '<span><div class="de">' + esc(m.de) + '</div><div class="as">' + esc(m.assunto) + '</div></span></li>';
   }).join('') : '<li class="vazio" style="display:block">Nenhum e-mail importante esperando.</li>';
 }
-$('emails').onclick = function (e) {
-  var li = e.target.closest('[data-m]'); if (!li) return;
-  var m = dados.emails.lista[+li.getAttribute('data-m')];
+function abrirEmail(i) {
+  var m = dados && dados.emails && dados.emails.lista[i]; if (!m) return;
   $('leDe').textContent = m.de + ' · ' + m.hora;
   $('leAssunto').textContent = m.assunto;
   $('leTexto').textContent = m.texto || '(sem texto)';
   $('folhaEmail').classList.add('on'); ultimoMov = Date.now();
+}
+$('emails').onclick = function (e) { var li = e.target.closest('[data-m]'); if (li) abrirEmail(+li.getAttribute('data-m')); };
+
+/* =========================================================
+   PERGUNTAR / ADICIONAR POR VOZ
+   ========================================================= */
+var Reco = window.SpeechRecognition || window.webkitSpeechRecognition, recoAtual = null, ultimaResp = null;
+function pgEstado(t) { $('pgEstado').textContent = t; }
+function abrirPergunta() {
+  ultimoMov = Date.now(); liberarVoz(); parar();
+  $('pgTexto').value = ''; $('pgResp').textContent = ''; $('pgPergunta').textContent = ''; $('pgEmail').style.display = 'none';
+  $('folhaPerg').classList.add('on');
+  if (Reco) ouvir(); else { pgEstado('Escreva a pergunta (ou use o microfone do teclado)'); setTimeout(function () { $('pgTexto').focus(); }, 100); }
+}
+function ouvir() {
+  if (!Reco) { $('pgTexto').focus(); return; }
+  try { if (recoAtual) recoAtual.abort(); } catch (e) {}
+  var r = new Reco(); recoAtual = r;
+  r.lang = 'pt-BR'; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
+  document.body.classList.add('ouvindo'); pgEstado('Ouvindo…');
+  r.onresult = function (ev) { var t = ''; for (var i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript; $('pgTexto').value = t; ultimoMov = Date.now(); };
+  r.onerror = function (ev) {
+    document.body.classList.remove('ouvindo');
+    pgEstado(ev.error === 'not-allowed' || ev.error === 'service-not-allowed' ? 'Sem permissão de microfone — escreva a pergunta' : ev.error === 'no-speech' ? 'Não ouvi nada — toque no microfone e fale' : 'Não consegui ouvir — escreva a pergunta');
+  };
+  r.onend = function () {
+    document.body.classList.remove('ouvindo'); recoAtual = null;
+    if ($('pgTexto').value.trim() && !$('pgResp').textContent) enviarPergunta();
+  };
+  try { r.start(); } catch (e) { document.body.classList.remove('ouvindo'); pgEstado('Escreva a pergunta'); }
+}
+function enviarPergunta() {
+  var t = $('pgTexto').value.trim(); if (!t) return;
+  try { if (recoAtual) recoAtual.abort(); } catch (e) {}
+  ultimoMov = Date.now();
+  $('pgPergunta').textContent = '“' + t + '”'; $('pgResp').textContent = ''; $('pgTexto').value = ''; pgEstado('Pensando…');
+  api('perguntar', { texto: t }).then(function (r) {
+    ultimaResp = r; pgEstado(''); ultimoMov = Date.now();
+    $('pgResp').textContent = r.resposta || 'Não encontrei a resposta.';
+    if (r.resposta) falar(r.resposta);
+    var abas = { hoje: 'vHoje', semana: 'vSemana', mes: 'vMes', emails: 'vEmails' };
+    if (abas[r.mostrar]) { var b = document.querySelector('.abas [data-vista=' + abas[r.mostrar] + ']'); if (b) b.click(); }
+    $('pgEmail').style.display = (r.email !== null && r.email !== undefined && dados && dados.emails.lista[r.email]) ? '' : 'none';
+    if (r.acao) setTimeout(function () { abrirAcao(r.acao); }, 600);
+  }, function () { pgEstado('Sem conexão — tente de novo'); });
+}
+function campo(rot, id, tipo, val, larga) {
+  return '<label class="' + (larga ? 'larga' : '') + '">' + rot + '<input id="' + id + '" type="' + tipo + '" value="' + esc(val == null ? '' : val) + '"></label>';
+}
+function abrirAcao(a) {
+  var f = '';
+  if (a.tipo === 'remedio') {
+    $('acTitulo').textContent = 'Novo remédio';
+    f = campo('Nome', 'acNome', 'text', a.nome || a.titulo, true) + campo('Dose', 'acDose', 'text', a.dose) + campo('Horários', 'acHoras', 'text', (a.horas || []).join(', '));
+  } else {
+    $('acTitulo').textContent = a.tipo === 'lembrete' ? 'Novo lembrete' : 'Novo compromisso';
+    f = campo('Título', 'acTit', 'text', a.titulo, true) + campo('Data', 'acData', 'date', a.data) +
+      '<label>Lembrar antes<select id="acLemb">' + [[-1, 'Sem aviso'], [0, 'Na hora'], [10, '10 min'], [30, '30 min'], [60, '1 hora'], [120, '2 horas'], [1440, '1 dia']].map(function (o) {
+        return '<option value="' + o[0] + '"' + (+(a.lembreteMin == null ? 30 : a.lembreteMin) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label>' +
+      campo('Início', 'acIni', 'time', a.inicio) + campo('Fim', 'acFim', 'time', a.fim) +
+      '<label class="marca larga"><input id="acDia" type="checkbox"' + (a.diaInteiro || !a.inicio ? ' checked' : '') + '> Dia inteiro</label>' +
+      campo('Local', 'acLocal', 'text', a.local, true);
+  }
+  $('acForm').innerHTML = f; $('acForm').setAttribute('data-tipo', a.tipo || 'evento');
+  $('folhaAcao').classList.add('on'); ultimoMov = Date.now();
+}
+$('acAprovar').onclick = function () {
+  var tipo = $('acForm').getAttribute('data-tipo'), a;
+  if (tipo === 'remedio') a = { tipo: 'remedio', nome: $('acNome').value, dose: $('acDose').value, horas: $('acHoras').value.split(/[,;\s]+/).filter(Boolean) };
+  else a = { tipo: tipo, titulo: $('acTit').value, data: $('acData').value, inicio: $('acIni').value, fim: $('acFim').value,
+    diaInteiro: $('acDia').checked || !$('acIni').value, local: $('acLocal').value, lembreteMin: +$('acLemb').value };
+  if (tipo !== 'remedio' && !a.data) { status('escolha a data'); return; }
+  this.disabled = true; var bt = this;
+  carregar('adicionar', { acao: a }).then(function () {
+    bt.disabled = false; $('folhaAcao').classList.remove('on'); $('folhaPerg').classList.remove('on');
+    toast('Salvo: <b>' + esc(a.titulo || a.nome) + '</b>', '#9bb48a'); falar('Pronto, salvei.');
+  }, function () { bt.disabled = false; status('não consegui salvar — tente de novo'); });
 };
+$('bPerg').onclick = function (e) { e.stopPropagation(); abrirPergunta(); };
+$('pgMic').onclick = function () { ouvir(); };
+$('pgEnviar').onclick = enviarPergunta;
+$('pgTexto').onkeydown = function (e) { if (e.key === 'Enter') enviarPergunta(); };
+$('pgEmail').onclick = function () { if (ultimaResp) abrirEmail(ultimaResp.email); };
 
 function renderQuadroProx() {
   var s = situacao(), t = Date.now(), el = $('qProx'), urg = false, h = '';
