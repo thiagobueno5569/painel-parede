@@ -227,8 +227,8 @@ function perguntar_(texto) {
     'Horas sempre por extenso natural (ex.: "às 13 e 15"). ' +
     'Se ele pedir para ADICIONAR, MARCAR, AGENDAR, LEMBRAR ou CADASTRAR algo, preencha "acao" e na resposta diga o que entendeu e peça para conferir na tela. ' +
     'Datas relativas ("amanhã", "sexta que vem") devem ser convertidas a partir de agora. ' +
-    'Se ele pedir para tocar música/a playlist, use mostrar "musica" e responda algo curto como "Tocando sua playlist da manhã". ' +
-    'Responda SÓ com JSON: {"resposta":"texto para falar","mostrar":"hoje|semana|mes|emails|musica|nenhum","email":número do e-mail citado ou null,' +
+    'Se ele pedir para tocar música/a playlist, use mostrar "musica"; para pausar/parar a música, "pausar"; para pular/próxima, "proxima". Nesses casos responda bem curto (ex.: "Tocando"). ' +
+    'Responda SÓ com JSON: {"resposta":"texto para falar","mostrar":"hoje|semana|mes|emails|musica|pausar|proxima|nenhum","email":número do e-mail citado ou null,' +
     '"acao":null ou {"tipo":"evento|lembrete|remedio","titulo":"","data":"YYYY-MM-DD","inicio":"HH:MM ou vazio","fim":"HH:MM ou vazio","diaInteiro":true/false,' +
     '"local":"","lembreteMin":30,"nome":"","dose":"","horas":["HH:MM"]}}\n\n' +
     'DADOS: ' + JSON.stringify(contexto_()) + '\n\nPEDIDO: ' + texto, 0.3);
@@ -1476,10 +1476,11 @@ function musicasCurtidas_() {
   const out = [];
   let tok;
   do {
-    const r = YouTube.Videos.list('snippet', { myRating: 'like', maxResults: 50, pageToken: tok });
+    const r = YouTube.Videos.list('snippet,status', { myRating: 'like', maxResults: 50, pageToken: tok });
     (r.items || []).forEach(function (v) {
       const sn = v.snippet;
       const canal = String(sn.channelTitle || '').replace(/ - Topic$/, '').replace(/VEVO$/i, '');
+      if (v.status && v.status.embeddable === false) return;   // não toca dentro do Atelier
       if (sn.categoryId === '10' || / - Topic$/.test(sn.channelTitle || '')) out.push({ id: v.id, t: sn.title, a: canal });
     });
     tok = r.nextPageToken;
@@ -1490,7 +1491,7 @@ function musicasCurtidas_() {
 function buscarMusica_(q) {
   const partes = String(q).split(/\s+[-–—]\s+/);
   const artista = semAcento_(partes[0] || ''), musica = semAcento_(partes.slice(1).join(' ') || q);
-  const r = YouTube.Search.list('snippet', { q: q + ' audio', type: 'video', videoCategoryId: '10', maxResults: 6, regionCode: 'BR' });
+  const r = YouTube.Search.list('snippet', { q: q + ' audio', type: 'video', videoCategoryId: '10', videoEmbeddable: 'true', maxResults: 6, regionCode: 'BR' });
   let melhor = null, nota = -99;
   (r.items || []).forEach(function (v) {
     const canal = v.snippet.channelTitle || '', tit = semAcento_(v.snippet.title), c = semAcento_(canal);
@@ -1568,7 +1569,7 @@ function montarPlaylistManha(forcar) {
   }
   if (!pid) {
     pid = YouTube.Playlists.insert({ snippet: { title: M.nome, description: 'Montada todo dia pelo assistente de parede.' },
-      status: { privacyStatus: 'private' } }, 'snippet,status').id;
+      status: { privacyStatus: 'unlisted' } }, 'snippet,status').id;
     props.setProperty('PLAYLIST_ID', pid);
   }
   let tok;
@@ -1595,7 +1596,7 @@ function montarPlaylistManha(forcar) {
 
   props.setProperty('PLAYLIST_USADAS', JSON.stringify(ok.map(function (m) { return m.id; }).concat(usadas).slice(0, 90)));
   const res = { data: hoje, id: pid, frase: frase, url: 'https://music.youtube.com/playlist?list=' + pid,
-    faixas: ok.map(function (m) { return { t: m.t, a: m.a, nova: !!m.nova }; }) };
+    faixas: ok.map(function (m) { return { id: m.id, t: m.t, a: m.a, nova: !!m.nova }; }) };
   props.setProperty('PLAYLIST_INFO', JSON.stringify(res));
   return res;
 }
