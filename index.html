@@ -1064,7 +1064,8 @@ $('muApp').onclick = function () {   // no app o Premium sempre vale (sem anúnc
   var web = 'https://music.youtube.com/playlist?list=' + m.id;
   var intent = 'intent://music.youtube.com/playlist?list=' + m.id + '#Intent;scheme=https;package=com.google.android.apps.youtube.music;S.browser_fallback_url=' + encodeURIComponent(web) + ';end';
   try { if (typeof fully !== 'undefined' && fully.startIntent) { fully.startIntent(intent); return; } } catch (e) {}
-  window.open(web, '_blank');
+  if (/Android/i.test(navigator.userAgent)) location.href = intent;   // Chrome no Android abre direto o app
+  else window.open(web, '_blank');
 };
 $('muTocar').onclick = function () { $('folhaMusica').classList.remove('on'); tocarPlaylist(); };
 $('muLista').onclick = function (e) {   // tocar a partir de uma música da lista
