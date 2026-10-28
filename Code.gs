@@ -51,7 +51,7 @@ const CONFIG = {
   // Chave do Gemini: coloque em Configurações do projeto › Propriedades do script › GEMINI_API_KEY
   // (assim ela não se perde quando o código é atualizado). Deixa a voz natural e a leitura dos e-mails mais esperta.
   GEMINI_API_KEY: '',
-  GEMINI_MODELO: 'gemini-2.5-flash',
+  GEMINI_MODELO: 'gemini-3.8-flash',
   // Voz natural (precisa da chave do Gemini). Vozes: Kore, Aoede, Leda, Charon, Puck, Orus…
   VOZ: { natural: true, modelo: 'gemini-3.8-flash-tts', voz: 'Kore',
     estilo: 'voz calma, acolhedora e natural, em português do Brasil, como uma assistente pessoal falando em casa' },
@@ -201,7 +201,7 @@ function diagGemini_() {
   const l = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { muteHttpExceptions: true, headers: { 'x-goog-api-key': key } });
   out.lista = l.getResponseCode() + ' ' + (l.getResponseCode() === 200 ? JSON.parse(l.getContentText()).models.map(function (m) { return m.name.replace('models/', '') + (m.supportedGenerationMethods.indexOf('generateContent') >= 0 ? '' : '(-)'); }).filter(function (n) { return /flash|pro/.test(n) && !/tts|image|audio|live|embed/.test(n); }).join(',') : l.getContentText().slice(0, 300));
   out.modeloOk = PropertiesService.getScriptProperties().getProperty('GEMINI_MODELO_OK');
-  ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'].forEach(function (m) {
+  ['gemini-3.8-flash', 'gemini-flash-latest'].forEach(function (m) {
     const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
       headers: { 'x-goog-api-key': key }, payload: JSON.stringify({ contents: [{ parts: [{ text: 'diga ok' }] }] }) });
     out[m] = r.getResponseCode() + ' ' + r.getContentText().slice(0, 160);
@@ -1038,7 +1038,8 @@ function acharDatas_(txt, base) {
 function chamarGemini_(prompt, temperatura) {
   const props = PropertiesService.getScriptProperties();
   const salvo = props.getProperty('GEMINI_MODELO_OK');
-  const modelos = [salvo, CONFIG.GEMINI_MODELO, 'gemini-3.8-flash', 'gemini-3.1-flash', 'gemini-flash-latest', 'gemini-2.5-flash']
+  const modelos = [salvo, 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest',
+    'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest']
     .filter(function (m, i, l) { return m && l.indexOf(m) === i; });
   for (let i = 0; i < modelos.length; i++) {
     const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + modelos[i] + ':generateContent', {
@@ -1055,7 +1056,9 @@ function chamarGemini_(prompt, temperatura) {
       try { return JSON.parse(JSON.parse(r.getContentText()).candidates[0].content.parts[0].text); } catch (e) { return null; }
     }
     console.warn('Gemini ' + modelos[i] + ' falhou: ' + cod + ' ' + r.getContentText().slice(0, 200));
-    if (cod !== 404 && cod !== 400) return null;   // erro de cota/rede: não adianta tentar outro
+    if (cod === 401 || cod === 403) return null;   // chave inválida: não adianta tentar outro
+    if (cod === 404 && modelos[i] === salvo) props.deleteProperty('GEMINI_MODELO_OK');
+    // 429/500/503 (muita procura) ou 404: tenta o próximo modelo
   }
   return null;
 }
