@@ -52,6 +52,11 @@ const CONFIG = {
   // (assim ela não se perde quando o código é atualizado). Deixa a voz natural e a leitura dos e-mails mais esperta.
   GEMINI_API_KEY: '',
   GEMINI_MODELO: 'gemini-3.8-flash',
+  // ---------- PLAYLIST DA MANHÃ (YouTube Music) ----------
+  // Toda manhã monta uma playlist a partir das músicas que você curtiu no YouTube / YouTube Music
+  // e mistura algumas parecidas que você ainda não curtiu.
+  MUSICA: { ligado: true, hora: '06:30', nome: 'Manhã · Atelier', faixas: 25, novas: 7,
+            gostoExtra: '' },   // opcional: artistas/estilos que você gosta, caso tenha poucas curtidas
   // Voz natural (precisa da chave do Gemini). Vozes: Kore, Aoede, Leda, Charon, Puck, Orus…
   VOZ: { natural: true, modelo: 'gemini-3.8-flash-tts', voz: 'Kore',
     estilo: 'voz calma, acolhedora e natural, em português do Brasil, como uma assistente pessoal falando em casa' },
@@ -172,6 +177,7 @@ function api_(acao, p) {
   else if (acao === 'perguntar') return perguntar_(p.texto);
   else if (acao === 'diag') return diagGemini_();
   else if (acao === 'adicionar') adicionar_(p.acao);
+  else if (acao === 'musica') return montarPlaylistManha(true);
   return getBriefing();
 }
 
@@ -191,6 +197,7 @@ function contexto_() {
     mes: b.mes ? Object.keys(b.mes.dias).map(function (d) { return d + ': ' + b.mes.dias[d].itens.map(function (i) { return i.t; }).join(', '); }) : [],
     remedios: b.remedios.hoje.map(function (r) { return r.nome + ' ' + r.dose + ' às ' + r.hora + (r.tomado ? ' (tomado)' : ' (pendente)'); }),
     clima: b.clima,
+    playlistDaManha: b.musica ? b.musica.faixas.map(function (f) { return f.t; }) : [],
     emails: b.emails.lista.map(function (m, i) { return '#' + i + ' de ' + m.de + ' — ' + m.assunto + ' — ' + String(m.texto || '').slice(0, 700); })
   };
 }
@@ -220,7 +227,8 @@ function perguntar_(texto) {
     'Horas sempre por extenso natural (ex.: "às 13 e 15"). ' +
     'Se ele pedir para ADICIONAR, MARCAR, AGENDAR, LEMBRAR ou CADASTRAR algo, preencha "acao" e na resposta diga o que entendeu e peça para conferir na tela. ' +
     'Datas relativas ("amanhã", "sexta que vem") devem ser convertidas a partir de agora. ' +
-    'Responda SÓ com JSON: {"resposta":"texto para falar","mostrar":"hoje|semana|mes|emails|nenhum","email":número do e-mail citado ou null,' +
+    'Se ele pedir para tocar música/a playlist, use mostrar "musica" e responda algo curto como "Tocando sua playlist da manhã". ' +
+    'Responda SÓ com JSON: {"resposta":"texto para falar","mostrar":"hoje|semana|mes|emails|musica|nenhum","email":número do e-mail citado ou null,' +
     '"acao":null ou {"tipo":"evento|lembrete|remedio","titulo":"","data":"YYYY-MM-DD","inicio":"HH:MM ou vazio","fim":"HH:MM ou vazio","diaInteiro":true/false,' +
     '"local":"","lembreteMin":30,"nome":"","dose":"","horas":["HH:MM"]}}\n\n' +
     'DADOS: ' + JSON.stringify(contexto_()) + '\n\nPEDIDO: ' + texto, 0.3);
@@ -506,6 +514,7 @@ function rotina() {
   try {
     tentar_(escanearEmails);
     tentar_(escanearFaculdade);
+    tentar_(function () { montarPlaylistManha(false); });
   } finally {
     lock.releaseLock();
   }
@@ -1199,7 +1208,8 @@ function getBriefing() {
     adicionados: tentar_(adicionadosRecentes_) || [],
     faculdade: tentar_(faculdadeProximos_) || [],
     proximos: tentar_(function () { return eventosProximos_(7); }) || [],
-    mes: tentar_(mapaMes_)
+    mes: tentar_(mapaMes_),
+    musica: tentar_(infoPlaylist_)
   };
   r.fala = montarFala_(r, agora);
   return r;
@@ -1436,7 +1446,12 @@ function montarFala_(r, agora) {
     p.push(f);
   }
 
-  // 6. amanhã (à noite)
+  // 6. música (de manhã)
+  if (h < 12 && r.musica && r.musica.data === hojeIso_(agora)) {
+    p.push('Preparei sua playlist da manhã' + (r.musica.frase ? ': ' + r.musica.frase : '.') + ' É só tocar em Música.');
+  }
+
+  // 7. amanhã (à noite)
   if (h >= 17) {
     const am = (r.aulasAmanha || []).filter(function (a) { return a.status !== 'cancelada'; });
     if (am.length) p.push('Amanhã a primeira aula é ' + am[0].nome + ' ' + asHora_(am[0].ini) + '; saia ' + (am[0].saidaAte ? 'entre ' + horaFalada_(am[0].saida) + ' e ' + horaFalada_(am[0].saidaAte) : asHora_(am[0].saida)) + '.');
@@ -1444,4 +1459,122 @@ function montarFala_(r, agora) {
   }
 
   return p.join(' ');
+}
+
+
+// ---------------------------------------------------------- PLAYLIST DA MANHÃ
+
+function infoPlaylist_() {
+  const s = PropertiesService.getScriptProperties().getProperty('PLAYLIST_INFO');
+  return s ? JSON.parse(s) : null;
+}
+
+/** Suas músicas curtidas (YouTube e YouTube Music usam a mesma lista de "gostei") */
+function musicasCurtidas_() {
+  const out = [];
+  let tok;
+  do {
+    const r = YouTube.Videos.list('snippet', { myRating: 'like', maxResults: 50, pageToken: tok });
+    (r.items || []).forEach(function (v) {
+      const sn = v.snippet;
+      const canal = String(sn.channelTitle || '').replace(/ - Topic$/, '').replace(/VEVO$/i, '');
+      if (sn.categoryId === '10' || / - Topic$/.test(sn.channelTitle || '')) out.push({ id: v.id, t: sn.title, a: canal });
+    });
+    tok = r.nextPageToken;
+  } while (tok && out.length < 300);
+  return out;
+}
+
+function buscarMusica_(q) {
+  const r = YouTube.Search.list('snippet', { q: q, type: 'video', videoCategoryId: '10', maxResults: 1 });
+  const v = (r.items || [])[0];
+  return v ? { id: v.id.videoId, t: v.snippet.title, a: v.snippet.channelTitle.replace(/ - Topic$/, '') } : null;
+}
+
+/** Monta (ou refaz) a playlist do dia. forcar=true ignora o horário. */
+function montarPlaylistManha(forcar) {
+  const M = CONFIG.MUSICA;
+  if (!M || !M.ligado) return { erro: 'desligado' };
+  const props = PropertiesService.getScriptProperties();
+  const agora = new Date(), hoje = hojeIso_(agora);
+  const info = infoPlaylist_();
+  if (!forcar) {
+    if (info && info.data === hoje) return info;
+    if (Utilities.formatDate(agora, TZ, 'HH:mm') < M.hora) return info;
+  }
+
+  const curtidas = musicasCurtidas_();
+  const usadas = JSON.parse(props.getProperty('PLAYLIST_USADAS') || '[]');   // últimos dias, para variar
+  let candidatas = curtidas.filter(function (m) { return usadas.indexOf(m.id) < 0; });
+  if (candidatas.length < M.faixas) candidatas = curtidas.slice();
+  candidatas = candidatas.sort(function () { return Math.random() - .5; }).slice(0, 120);
+
+  const dia = DIAS[agora.getDay()];
+  const aulas = tentar_(function () { return aulasDoDia_(agora, eventosDoDia_(agora)); }) || [];
+  const j = chamarGemini_(
+    'Você é curador musical. Monte a playlist da MANHÃ de ' + dia + ' para ' + CONFIG.NOME + ', estudante com TDAH: ' +
+    'começa calma para acordar e vai ganhando energia para sair de casa e focar' +
+    (aulas.length ? ' (hoje tem aula às ' + aulas[0].hIni + ')' : ' (hoje não tem aula)') + '. ' +
+    'Escolha ' + Math.max(0, M.faixas - M.novas) + ' faixas da lista CURTIDAS (pelos índices, já na ordem de tocar) e sugira ' + M.novas +
+    ' músicas NOVAS que ele provavelmente vai gostar pelo mesmo gosto (artistas parecidos ou outras faixas dos mesmos), que não estejam na lista. ' +
+    (M.gostoExtra ? 'Ele também disse que gosta de: ' + M.gostoExtra + '. ' : '') +
+    'Evite músicas longas demais, ao vivo ou versões estranhas. ' +
+    'Responda SÓ JSON: {"ordem":[índices],"novas":[{"busca":"Artista - Música","depoisDe":índice da posição na ordem}],' +
+    '"frase":"uma frase curta e leve (máx. 12 palavras) descrevendo a playlist de hoje"}\n\nCURTIDAS: ' +
+    JSON.stringify(candidatas.map(function (m, i) { return i + ': ' + m.a + ' — ' + m.t; })), 0.9);
+
+  let lista = [], frase = '';
+  if (j && j.ordem) {
+    frase = j.frase || '';
+    j.ordem.forEach(function (i) { if (candidatas[i]) lista.push(candidatas[i]); });
+    const novas = (j.novas || []).slice(0, M.novas);
+    // insere as novas espalhadas nas posições sugeridas (de trás pra frente para não bagunçar os índices)
+    novas.map(function (n) { return { n: n, m: tentar_(function () { return buscarMusica_(n.busca); }) }; })
+      .filter(function (x) { return x.m && curtidas.every(function (c) { return c.id !== x.m.id; }); })
+      .sort(function (a, b) { return (b.n.depoisDe || 0) - (a.n.depoisDe || 0); })
+      .forEach(function (x) { x.m.nova = true; lista.splice(Math.min(lista.length, (x.n.depoisDe || 0) + 1), 0, x.m); });
+  } else {
+    // sem Gemini: só embaralha as curtidas
+    lista = candidatas.slice(0, M.faixas);
+  }
+  lista = lista.filter(function (m, i, l) { return l.findIndex(function (o) { return o.id === m.id; }) === i; }).slice(0, M.faixas + 3);
+  if (!lista.length) {
+    const vazio = { data: hoje, erro: 'Não achei músicas curtidas. Curta algumas no YouTube Music (👍) ou preencha MUSICA.gostoExtra.' };
+    props.setProperty('PLAYLIST_INFO', JSON.stringify(vazio));
+    return vazio;
+  }
+
+  // playlist fixa (sempre o mesmo link): limpa e preenche de novo
+  let pid = props.getProperty('PLAYLIST_ID');
+  if (pid) {
+    try { YouTube.Playlists.list('id', { id: pid }).items.length || (pid = null); } catch (e) { pid = null; }
+  }
+  if (!pid) {
+    pid = YouTube.Playlists.insert({ snippet: { title: M.nome, description: 'Montada todo dia pelo assistente de parede.' },
+      status: { privacyStatus: 'private' } }, 'snippet,status').id;
+    props.setProperty('PLAYLIST_ID', pid);
+  }
+  let tok;
+  do {
+    const r = YouTube.PlaylistItems.list('id', { playlistId: pid, maxResults: 50, pageToken: tok });
+    (r.items || []).forEach(function (it) { tentar_(function () { YouTube.PlaylistItems.remove(it.id); }); });
+    tok = r.nextPageToken;
+  } while (tok);
+  const ok = [];
+  lista.forEach(function (m) {
+    tentar_(function () {
+      YouTube.PlaylistItems.insert({ snippet: { playlistId: pid, resourceId: { kind: 'youtube#video', videoId: m.id } } }, 'snippet');
+      ok.push(m);
+    });
+  });
+  try {
+    YouTube.Playlists.update({ id: pid, snippet: { title: M.nome, description: (frase ? frase + ' — ' : '') + 'montada em ' +
+      Utilities.formatDate(agora, TZ, 'dd/MM') + ' pelo assistente de parede.' } }, 'snippet');
+  } catch (e) {}
+
+  props.setProperty('PLAYLIST_USADAS', JSON.stringify(ok.map(function (m) { return m.id; }).concat(usadas).slice(0, 90)));
+  const res = { data: hoje, id: pid, frase: frase, url: 'https://music.youtube.com/playlist?list=' + pid,
+    faixas: ok.map(function (m) { return { t: m.t, a: m.a, nova: !!m.nova }; }) };
+  props.setProperty('PLAYLIST_INFO', JSON.stringify(res));
+  return res;
 }
