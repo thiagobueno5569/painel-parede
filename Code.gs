@@ -341,6 +341,7 @@ function aulasDoDia_(d, eventos) {
           .some(function (w) { return t.indexOf(w) >= 0; });
       });
       if (alvo.length) alvo.forEach(function (a) { a.status = 'cancelada'; a.nota = 'Aviso por e-mail: sem aula'; });
+      else if (/suspens|ufsj|calend/.test(t)) lista.forEach(function (a) { a.status = 'cancelada'; a.nota = 'Atividades presenciais suspensas (UFSJ)'; });
       else lista.forEach(function (a) { if (a.status === 'normal') { a.status = 'aviso'; a.nota = 'Há um aviso de "sem aula" hoje — confira o e-mail'; } });
     }
   });
@@ -682,7 +683,7 @@ function criarEvento_(ev, m, opt) {
 const TIPOS = {
   sem_aula: {
     nome: '🚫 Sem aula', fala: 'não vai ter aula', cor: 'GRAY', lembretes: [600],
-    re: /n[aã]o\s+(haver[aá]|teremos|vai\s+ter|ter[aá]|ocorrer[aá])\s+(a\s+|as\s+)?aulas?|aulas?\s+(est[aá]\s+|ser[aá]\s+|foi\s+|est[aã]o\s+|ser[aã]o\s+|foram\s+)?(cancelad|suspens)|cancelamento\s+d[ae]s?\s+aulas?|suspens[aã]o\s+d[ae]s?\s+aulas?|\bsem\s+aulas?\b|ponto\s+facultativo/i
+    re: /n[aã]o\s+(haver[aá]|teremos|vai\s+ter|ter[aá]|ocorrer[aá])\s+(a\s+|as\s+)?aulas?|aulas?\s+(est[aá]\s+|ser[aá]\s+|foi\s+|est[aã]o\s+|ser[aã]o\s+|foram\s+)?(cancelad|suspens)|cancelamento\s+d[ae]s?\s+aulas?|suspens[aã]o\s+d[ae]s?\s+aulas?|\bsem\s+aulas?\b|ponto\s+facultativo|atividades\s+(acad[eê]micas\s+)?(presenciais\s+)?(est[aã]o\s+|ser[aã]o\s+|ficam\s+)?suspens|suspens[aã]o\s+das?\s+atividades|aulas?\s+suspens/i
   },
   reposicao: {
     nome: '🔁 Aula extra', fala: 'aula extra', cor: 'CYAN', lembretes: [1440, 60],
@@ -708,7 +709,14 @@ function original_(m) {
   const corpo = m.getPlainBody() || '';
   const base = { de: m.getFrom(), assunto: m.getSubject() || '', corpo: corpo, data: m.getDate() };
   // cabeçalho posto pela Ponte UFSJ
-  const pt = corpo.match(/\[PONTE-UFSJ\]\s*De:\s*(.*?)\s*\|\s*Data:\s*(\S+)\s*\|\s*Assunto:\s*(.*)/);
+  const todos = corpo.match(/\[PONTE-UFSJ\]\s*De:\s*(.*?)\s*\|\s*Data:\s*(\S+)\s*\|\s*Assunto:\s*(.*)/g);
+  let pt = null;
+  if (todos) {
+    const ult = todos[todos.length - 1];
+    pt = ult.match(/\[PONTE-UFSJ\]\s*De:\s*(.*?)\s*\|\s*Data:\s*(\S+)\s*\|\s*Assunto:\s*(.*)/);
+    pt.index = corpo.lastIndexOf(ult);
+    pt[3] = pt[3].split('[PONTE-UFSJ]')[0];
+  }
   if (pt) {
     const dp = new Date(pt[2]);
     return { de: pt[1], assunto: pt[3].trim(), corpo: corpo.slice(pt.index + pt[0].length), data: isNaN(dp) ? base.data : dp };
@@ -776,7 +784,7 @@ function escanearFaculdade() {
   const busca = '(' + F.REMETENTES.map(function (r) { return 'from:' + r; }).join(' OR ') + ')' +
     ' newer_than:' + F.DIAS + 'd -label:' + slugMarcador_(F.MARCADOR);
   const cal = agendaFaculdade_();
-  GmailApp.search(busca, 0, 40).forEach(function (th) {
+  GmailApp.search(busca, 0, 100).forEach(function (th) {
     th.getMessages().slice(-3).forEach(function (m) {
       try {
         eventosFaculdade_(m).forEach(function (ev) {
@@ -868,19 +876,30 @@ function eventosFaculdade_(m) {
 function faculdadeHeuristica_(m) {
   const o = original_(m);
   const assunto = limparAssunto_(o.assunto);
-  if (IGNORAR_FACULDADE.test(assunto)) return [];
   const corpo = o.corpo.slice(0, 5000);
-  const tipo = tipoDe_(assunto) || tipoDe_(corpo.slice(0, 1200));
+  const tipo = tipoDe_(assunto) || tipoDe_(corpo.slice(0, 1500));
   if (!tipo) return [];
-  // a data precisa estar PERTO da palavra-chave (evita pegar datas soltas do e-mail)
+  if (tipo !== 'sem_aula' && IGNORAR_FACULDADE.test(assunto)) return [];
   const texto = assunto + '\n' + corpo;
-  const pos = texto.search(TIPOS[tipo].re);
-  const trecho = pos >= 0 ? texto.slice(Math.max(0, pos - 120), pos + 240) : '';
   const base = o.data;
+  const disc = disciplinaSigaa_(assunto);
+  const pos = texto.search(TIPOS[tipo].re);
+
+  // "sem aula": pode ter várias datas ("nos dias 28/10 e 30/10"); só valem datas DEPOIS da frase
+  if (tipo === 'sem_aula') {
+    const trecho = texto.slice(pos, pos + 320);
+    let datas = acharDatas_(trecho, base);
+    if (!datas.length) datas = acharDatas_(texto.slice(Math.max(0, pos - 160), pos), base).slice(-1);
+    const geral = !disc && /suspens|calend[aá]rio|todas|feriado|ponto\s+facultativo|recesso/i.test(trecho + assunto);
+    const nome = disc || (geral ? 'Atividades presenciais suspensas (UFSJ)' : limparAssunto_(assunto));
+    return datas.map(function (d) { return { tipo: tipo, titulo: tituloFaculdade_(tipo, nome), inicio: d, diaInteiro: true }; });
+  }
+
+  // demais: a data precisa estar PERTO da palavra-chave
+  const trecho = pos >= 0 ? texto.slice(Math.max(0, pos - 120), pos + 240) : '';
   const data = acharData_(trecho, base) || acharData_(assunto, base);
   if (!data) return [];
   const hora = acharHora_(trecho) || acharHora_(assunto);
-  const disc = disciplinaSigaa_(assunto);
   const ev = { tipo: tipo, titulo: tituloFaculdade_(tipo, disc || assunto) };
   if (hora) {
     ev.inicio = new Date(data.getFullYear(), data.getMonth(), data.getDate(), hora[0], hora[1]);
@@ -890,6 +909,21 @@ function faculdadeHeuristica_(m) {
     ev.diaInteiro = true;
   }
   return [ajustarEntrega_(ev)];
+}
+
+/** Todas as datas de um trecho: "28/10 e 30/10", "dias 28 e 30 de outubro", "5 de novembro" (só de hoje em diante) */
+function acharDatas_(txt, base) {
+  const out = [], hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  function add(d) { if (d && !isNaN(d) && d >= hoje && !out.some(function (x) { return +x === +d; })) out.push(d); }
+  let m;
+  const r1 = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/g;
+  while ((m = r1.exec(txt))) add(montarData_(+m[1], +m[2], m[3], base));
+  const r2 = new RegExp('((?:\\b\\d{1,2}º?\\s*(?:,|e|a|/)\\s*)*\\b\\d{1,2})º?\\s+de\\s+(' + MESES_RE + ')(?:\\s+de\\s+(\\d{4}))?', 'gi');
+  while ((m = r2.exec(txt))) {
+    const mes = MESES.indexOf(m[2].toLowerCase().replace('marco', 'março')) + 1;
+    m[1].match(/\d{1,2}/g).forEach(function (dd) { add(montarData_(+dd, mes, m[3], base)); });
+  }
+  return out.sort(function (a, b) { return a - b; });
 }
 
 function chamarGemini_(prompt) {
@@ -911,7 +945,7 @@ function chamarGemini_(prompt) {
 
 function faculdadeGemini_(m) {
   const o = original_(m);
-  if (IGNORAR_FACULDADE.test(o.assunto)) return [];
+  if (IGNORAR_FACULDADE.test(o.assunto) && !TIPOS.sem_aula.re.test(o.assunto + ' ' + o.corpo.slice(0, 1500))) return [];
   const hoje = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd (EEEE)');
   const j = chamarGemini_(
     'Hoje é ' + hoje + ' (fuso America/Sao_Paulo). Este é um e-mail da faculdade de um estudante. ' +

@@ -31,12 +31,14 @@ function encaminhar() {
     const ultimo = +(props.getProperty('ULTIMO') || (Date.now() - DIAS_INICIAIS * 86400000));
     const threads = GmailApp.search('in:inbox -in:sent after:' + Math.floor(ultimo / 1000), 0, 100);
 
+    const eu = String(Session.getActiveUser().getEmail() || '').toLowerCase();
     let novas = [];
     threads.forEach(function (th) {
       th.getMessages().forEach(function (m) {
         const t = m.getDate().getTime();
         if (t <= ultimo) return;
         if (m.getFrom().indexOf(DESTINO) >= 0) return;   // não devolve o que veio do Gmail pessoal
+        if (eu && m.getFrom().toLowerCase().indexOf(eu) >= 0) return;   // nem as próprias cópias encaminhadas (evita repetir)
         novas.push(m);
       });
     });

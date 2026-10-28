@@ -56,6 +56,18 @@
   }
   .q-hora { font-family: var(--serif); font-weight: 300; font-size: 10.5vw; line-height: .78; letter-spacing: -.01em; }
   .q-data { margin-top: 1.6vh; font-size: 1.05vw; letter-spacing: .24em; text-transform: uppercase; color: var(--suave); }
+  .q-clima { margin-top: .8vh; font-size: 1.15vw; color: var(--suave); }
+  .p-horas { display: flex; gap: 1.6vw; justify-content: flex-end; margin-top: .6vh; font-size: 1vw; color: var(--apagado); }
+  .p-horas b { color: var(--suave); font-weight: 500; }
+  .p-clima { text-align: right; }
+  .n-clima { font-size: 1.05vw; letter-spacing: .14em; color: var(--suave); opacity: 0; margin-top: 1vh; transition: opacity 1.6s; transform: translate(var(--dx), var(--dy)); }
+  body.espiando .n-clima { opacity: .5; }
+  #luaInfo { position: absolute; width: 260px; text-align: center; font-size: .95vw; line-height: 1.55; color: var(--suave); opacity: 0; transition: opacity 1.6s; pointer-events: none; }
+  #luaInfo b { color: var(--tinta); font-weight: 500; }
+  #luaInfo span { display: block; font-size: .85vw; color: var(--apagado); }
+  #luaInfo .fases { margin-top: .3vh; }
+  #luaInfo.canto { left: auto !important; right: 3vw; top: 4vh !important; text-align: right; }
+  body.espiando #luaInfo { opacity: .75; }
   .q-obra { border-left: 1px solid var(--linha2); padding-left: 1.8vw; align-self: end; margin-bottom: .6vh; max-width: 34vw; }
   .q-obra i { display: block; font-family: var(--serif); font-size: 1.75vw; line-height: 1.15; color: var(--tinta); }
   .q-obra span { display: block; font-size: 1.05vw; color: var(--suave); margin-top: .7vh; }
@@ -279,6 +291,7 @@
     <div>
       <div class="q-hora num" id="qHora">--:--</div>
       <div class="q-data" id="qData"></div>
+      <div class="q-clima num" id="qClima"></div>
     </div>
     <div class="q-obra" id="qObra"></div>
     <div class="q-prox" id="qProx"></div>
@@ -333,6 +346,8 @@
 <section class="tela" id="noite">
   <div class="n-hora num" id="nHora">--:--</div>
   <div class="n-linha" id="nLinha"></div>
+  <div class="n-clima num" id="nClima"></div>
+  <div id="luaInfo"></div>
 </section>
 
 <!-- FOCO -->
@@ -567,9 +582,7 @@ function remediosHoje() { return (dados && dados.remedios && dados.remedios.hoje
    ========================================================= */
 function render() {
   if (!dados) return;
-  var c = dados.clima;
-  $('pClima').innerHTML = c ? '<b>' + c.agora + '°</b>&nbsp; ' + esc(c.descricao) + ' &nbsp;·&nbsp; máx ' + c.max + '° mín ' + c.min + '°' +
-    (c.chuva >= 30 ? ' &nbsp;·&nbsp; chuva ' + c.chuva + '%' : '') : '';
+  renderClima();
   renderAgenda();
   renderPrazos();
   renderRemedios();
@@ -1148,22 +1161,225 @@ function tamanho() {
   for (var i = 0; i < n; i++) estrelas.push({ x: Math.random() * W, y: Math.random() * H * .75, r: Math.random() < .1 ? 1.2 : Math.random() * .7 + .3,
     b: Math.random() * .3 + .1, v: Math.random() * .0012 + .0003, f: Math.random() * 6.28 });
 }
-function faseLua(d) { var c = 2551442.877, ref = Date.UTC(2000, 0, 6, 18, 14) / 1000, f = ((d.getTime() / 1000 - ref) % c) / c; return f < 0 ? f + 1 : f; }
-function lua(x, y, r, fase, a) {
-  var halo = cx.createRadialGradient(x, y, r * .95, x, y, r * 1.8);
-  halo.addColorStop(0, 'rgba(210,215,240,' + (.06 * a) + ')'); halo.addColorStop(1, 'rgba(210,215,240,0)');
-  cx.fillStyle = halo; cx.beginPath(); cx.arc(x, y, r * 1.8, 0, 6.2832); cx.fill();
-  cx.fillStyle = 'rgba(110,115,140,' + (.1 * a) + ')'; cx.beginPath(); cx.arc(x, y, r, 0, 6.2832); cx.fill();
-  var k = Math.cos(fase * 2 * Math.PI), lado = fase < .5 ? -1 : 1;   // hemisfério sul
-  cx.save(); cx.translate(x, y); cx.scale(lado, 1);
-  cx.beginPath(); cx.arc(0, 0, r, -Math.PI / 2, Math.PI / 2, false);
-  var rx = Math.max(.01, r * Math.abs(k));
-  if (k > 0) cx.ellipse(0, 0, rx, r, 0, Math.PI / 2, -Math.PI / 2, true); else cx.ellipse(0, 0, rx, r, 0, Math.PI / 2, Math.PI * 1.5, false);
-  cx.closePath();
-  var g = cx.createRadialGradient(-r * .3, -r * .3, r * .1, 0, 0, r);
-  g.addColorStop(0, 'rgba(246,242,230,' + (.88 * a) + ')'); g.addColorStop(1, 'rgba(212,206,190,' + (.72 * a) + ')');
-  cx.fillStyle = g; cx.fill(); cx.restore();
+/* ---------- Astronomia da Lua (fórmulas do SunCalc, de Vladimir Agafonkin, licença BSD-2) ---------- */
+var LAT = -21.1356, LON = -44.2617;
+var RAD = Math.PI / 180, DIA_MS = 864e5, J1970 = 2440588, J2000 = 2451545, OBL = RAD * 23.4397;
+function aDias(d) { return d.valueOf() / DIA_MS - 0.5 + J1970 - J2000; }
+function ascRet(l, b) { return Math.atan2(Math.sin(l) * Math.cos(OBL) - Math.tan(b) * Math.sin(OBL), Math.cos(l)); }
+function declin(l, b) { return Math.asin(Math.sin(b) * Math.cos(OBL) + Math.cos(b) * Math.sin(OBL) * Math.sin(l)); }
+function azim(H, phi, dec) { return Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(phi) - Math.tan(dec) * Math.cos(phi)); }
+function altit(H, phi, dec) { return Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H)); }
+function sideral(d, lw) { return RAD * (280.16 + 360.9856235 * d) - lw; }
+function refracao(h) { if (h < 0) h = 0; return 0.0002967 / Math.tan(h + 0.00312536 / (h + 0.08901179)); }
+function solCoord(d) {
+  var M = RAD * (357.5291 + 0.98560028 * d);
+  var L = M + RAD * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)) + RAD * 102.9372 + Math.PI;
+  return { dec: declin(L, 0), ra: ascRet(L, 0) };
 }
+function luaCoord(d) {
+  var L = RAD * (218.316 + 13.176396 * d), M = RAD * (134.963 + 13.064993 * d), F = RAD * (93.272 + 13.229350 * d);
+  var l = L + RAD * 6.289 * Math.sin(M), b = RAD * 5.128 * Math.sin(F);
+  return { ra: ascRet(l, b), dec: declin(l, b), dist: 385001 - 20905 * Math.cos(M) };
+}
+function luaPosicao(data) {
+  var lw = RAD * -LON, phi = RAD * LAT, d = aDias(data), c = luaCoord(d), H = sideral(d, lw) - c.ra, h = altit(H, phi, c.dec);
+  var pa = Math.atan2(Math.sin(H), Math.tan(phi) * Math.cos(c.dec) - Math.sin(c.dec) * Math.cos(H));
+  return { az: azim(H, phi, c.dec), alt: h + refracao(h), dist: c.dist, pa: pa };
+}
+function luaIluminacao(data) {
+  var d = aDias(data), s = solCoord(d), m = luaCoord(d), sd = 149598000;
+  var phi = Math.acos(Math.sin(s.dec) * Math.sin(m.dec) + Math.cos(s.dec) * Math.cos(m.dec) * Math.cos(s.ra - m.ra));
+  var inc = Math.atan2(sd * Math.sin(phi), m.dist - sd * Math.cos(phi));
+  var ang = Math.atan2(Math.cos(s.dec) * Math.sin(s.ra - m.ra), Math.sin(s.dec) * Math.cos(m.dec) - Math.cos(s.dec) * Math.sin(m.dec) * Math.cos(s.ra - m.ra));
+  return { fracao: (1 + Math.cos(inc)) / 2, fase: 0.5 + 0.5 * inc * (ang < 0 ? -1 : 1) / Math.PI, angulo: ang };
+}
+function nomeFase(p) {
+  if (p < .03 || p > .97) return 'Lua nova';
+  if (p < .22) return 'Lua crescente';
+  if (p < .28) return 'Quarto crescente';
+  if (p < .47) return 'Crescente gibosa';
+  if (p < .53) return 'Lua cheia';
+  if (p < .72) return 'Minguante gibosa';
+  if (p < .78) return 'Quarto minguante';
+  return 'Lua minguante';
+}
+// nascer e pôr da lua: procura as passagens pelo horizonte nas próximas 30 h
+function luaNascerPor(agora) {
+  var h0 = 0.133 * RAD, passo = 10 * 60000, ant = luaPosicao(agora).alt - h0, nasce = null, poe = null;
+  for (var t = agora.getTime() + passo; t < agora.getTime() + 30 * 3600000 && (!nasce || !poe); t += passo) {
+    var a = luaPosicao(new Date(t)).alt - h0;
+    var cruz = t - passo * a / (a - ant);
+    if (ant < 0 && a >= 0 && !nasce) nasce = cruz;
+    if (ant >= 0 && a < 0 && !poe) poe = cruz;
+    ant = a;
+  }
+  return { nasce: nasce, poe: poe };
+}
+// próximas fases principais (nova, quarto crescente, cheia, quarto minguante)
+function proximasFases(agora) {
+  var alvo = [[0, 'Nova'], [.25, 'Crescente'], [.5, 'Cheia'], [.75, 'Minguante']], out = [], passo = 3600000;
+  var ant = luaIluminacao(agora).fase;
+  for (var t = agora.getTime() + passo; t < agora.getTime() + 32 * DIA_MS && out.length < 4; t += passo) {
+    var f = luaIluminacao(new Date(t)).fase;
+    alvo.forEach(function (x) {
+      var cruzou = x[0] === 0 ? (ant > .9 && f < .1) : (ant < x[0] && f >= x[0]);
+      if (cruzou) out.push({ nome: x[1], t: t });
+    });
+    ant = f;
+  }
+  return out;
+}
+
+/* ---------- Textura da Lua (mares e crateras), gerada uma vez ---------- */
+var texturaLua = null, texturaR = 0;
+function gerarTextura(r) {
+  var c = document.createElement('canvas'), s = Math.ceil(r * 2) + 4; c.width = c.height = s;
+  var g = c.getContext('2d'), m = s / 2;
+  g.translate(m, m);
+  var base = g.createRadialGradient(-r * .25, -r * .25, r * .1, 0, 0, r);
+  base.addColorStop(0, '#f1ede3'); base.addColorStop(.75, '#dcd6c8'); base.addColorStop(1, '#b9b3a6');
+  g.fillStyle = base; g.beginPath(); g.arc(0, 0, r, 0, 6.2832); g.fill();
+  g.save(); g.beginPath(); g.arc(0, 0, r, 0, 6.2832); g.clip();
+  // mares, na posição em que aparecem com o norte da Lua para cima (manchas com borda suave)
+  [[-.30, -.40, .26, .22], [-.60, -.02, .24, .46], [.12, -.38, .16, .15], [.30, -.10, .21, .17], [.68, -.30, .12, .10],
+   [.52, .18, .12, .19], [.33, .32, .09, .08], [-.18, .40, .20, .13], [-.48, .38, .10, .09], [.00, -.72, .45, .06],
+   [-.02, -.16, .08, .07], [-.40, -.70, .12, .05]].forEach(function (k) {
+    for (var j = 0; j < 3; j++) {
+      g.save();
+      g.translate((k[0] + (j - 1) * .03) * r, (k[1] + ((j * 7) % 3 - 1) * .025) * r);
+      g.rotate(j * .12);
+      g.scale(k[2] * r * (1.15 - j * .12), k[3] * r * (1.15 - j * .1));
+      var mg = g.createRadialGradient(0, 0, 0, 0, 0, 1);
+      mg.addColorStop(0, 'rgba(112,109,102,.30)'); mg.addColorStop(.6, 'rgba(112,109,102,.22)'); mg.addColorStop(1, 'rgba(112,109,102,0)');
+      g.fillStyle = mg; g.beginPath(); g.arc(0, 0, 1, 0, 6.2832); g.fill();
+      g.restore();
+    }
+  });
+  // crateras pequenas (aleatório fixo)
+  var sem = 7; function rnd() { sem = (sem * 9301 + 49297) % 233280; return sem / 233280; }
+  for (var i = 0; i < 70; i++) {
+    var a = rnd() * 6.2832, d = Math.sqrt(rnd()) * r * .92, cr = (rnd() * .035 + .008) * r;
+    g.strokeStyle = 'rgba(90,88,82,.10)'; g.lineWidth = Math.max(.5, cr * .3);
+    g.beginPath(); g.arc(Math.cos(a) * d, Math.sin(a) * d, cr, 0, 6.2832); g.stroke();
+  }
+  // Tycho e Copérnico: crateras claras
+  [[-.12, .72, .035], [-.36, -.14, .03], [-.70, -.18, .02]].forEach(function (k) {
+    var gr = g.createRadialGradient(k[0] * r, k[1] * r, 0, k[0] * r, k[1] * r, k[2] * r * 3);
+    gr.addColorStop(0, 'rgba(255,253,245,.9)'); gr.addColorStop(1, 'rgba(255,253,245,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(k[0] * r, k[1] * r, k[2] * r * 3, 0, 6.2832); g.fill();
+  });
+  g.restore();
+  // escurecimento da borda
+  var lim = g.createRadialGradient(0, 0, r * .7, 0, 0, r);
+  lim.addColorStop(0, 'rgba(0,0,0,0)'); lim.addColorStop(1, 'rgba(0,0,0,.28)');
+  g.fillStyle = lim; g.beginPath(); g.arc(0, 0, r, 0, 6.2832); g.fill();
+  texturaLua = c; texturaR = r;
+}
+
+/* ---------- Estado da Lua (recalculado a cada minuto) ---------- */
+var LUA = null;
+function atualizarLua() {
+  var agora = new Date(), pos = luaPosicao(agora), il = luaIluminacao(agora);
+  var rumo = (pos.az / RAD + 180 + 360) % 360;          // 0 = norte, 90 = leste
+  var rel = ((rumo + 180) % 360) - 180;                 // relativo ao norte (olhando para o norte: leste à direita)
+  LUA = { pos: pos, il: il, rumo: rumo, rel: rel, visivel: pos.alt > -0.5 * RAD,
+    nome: nomeFase(il.fase), pct: Math.round(il.fracao * 100), np: luaNascerPor(agora) };
+  if (!LUA.fases || !LUA.fasesEm || agora - LUA.fasesEm > 3600000) { LUA.fases = proximasFases(agora); LUA.fasesEm = agora.getTime(); }
+  renderLuaInfo();
+}
+var _fasesCache = null;
+function renderLuaInfo() {
+  if (!LUA) return;
+  if (!_fasesCache || Date.now() - _fasesCache.t > 3600000) _fasesCache = { t: Date.now(), f: proximasFases(new Date()) };
+  var f = _fasesCache.f, np = LUA.np;
+  var sub = LUA.visivel ? (np.poe ? 'se põe às ' + hhmm(np.poe) : '') : (np.nasce ? 'nasce às ' + hhmm(np.nasce) : 'abaixo do horizonte');
+  var rumos = ['norte', 'nordeste', 'leste', 'sudeste', 'sul', 'sudoeste', 'oeste', 'noroeste'];
+  var onde = LUA.visivel ? rumos[Math.round(LUA.rumo / 45) % 8] + ', ' + Math.round(LUA.pos.alt / RAD) + '° de altura' : '';
+  $('luaInfo').innerHTML = '<b>' + LUA.nome + '</b> · ' + LUA.pct + '% iluminada' +
+    '<span>' + [onde, sub].filter(Boolean).join(' · ') + '</span>' +
+    '<span class="fases">' + f.map(function (x) { var d = new Date(x.t); return x.nome + ' ' + d.getDate() + '/' + (d.getMonth() + 1); }).join(' &nbsp;·&nbsp; ') + '</span>';
+  var pc = $('pLua'); if (pc) pc.textContent = LUA.nome + ' · ' + LUA.pct + '%';
+}
+
+/* ---------- Desenho da Lua ---------- */
+function lua(x, y, r, a) {
+  if (!texturaLua || Math.abs(texturaR - r) > 1) gerarTextura(r);
+  var il = LUA.il, q = LUA.pos.pa, ang = il.angulo, f = il.fracao;
+  // halo bem discreto
+  var halo = cx.createRadialGradient(x, y, r * .95, x, y, r * 1.7);
+  halo.addColorStop(0, 'rgba(225,228,240,' + (.07 * a * f) + ')'); halo.addColorStop(1, 'rgba(225,228,240,0)');
+  cx.fillStyle = halo; cx.beginPath(); cx.arc(x, y, r * 1.7, 0, 6.2832); cx.fill();
+  cx.save();
+  cx.translate(x, y);
+  cx.rotate(q);                            // norte da Lua inclinado como no céu daqui (no hemisfério sul ela aparece 'de cabeça para baixo')
+  // luz cinérea: o lado escuro aparece bem de leve
+  cx.globalAlpha = .07 * a;
+  cx.drawImage(texturaLua, -texturaLua.width / 2, -texturaLua.height / 2);
+  cx.globalAlpha = 1;
+  // parte iluminada
+  var fi = -ang - Math.PI / 2;             // lado iluminado aponta para o Sol
+  cx.save();
+  cx.rotate(fi);
+  var k = 1 - 2 * f, rx = Math.max(.01, r * Math.abs(k));
+  cx.beginPath();
+  cx.arc(0, 0, r, -Math.PI / 2, Math.PI / 2, false);
+  if (k > 0) cx.ellipse(0, 0, rx, r, 0, Math.PI / 2, -Math.PI / 2, true);
+  else cx.ellipse(0, 0, rx, r, 0, Math.PI / 2, Math.PI * 1.5, false);
+  cx.closePath();
+  cx.clip();
+  cx.rotate(-fi);
+  cx.globalAlpha = a;
+  cx.drawImage(texturaLua, -texturaLua.width / 2, -texturaLua.height / 2);
+  cx.restore();
+  cx.restore();
+  cx.globalAlpha = 1;
+}
+// onde a lua fica na tela: olhando para o norte (leste à direita), altura = vertical
+function posTela() {
+  var rel = Math.max(-100, Math.min(100, LUA.rel)), alt = Math.max(0, LUA.pos.alt / RAD);
+  return { x: W * (.5 + rel / 230), y: H * (.70 - Math.min(alt, 80) / 80 * .58) };
+}
+
+/* ---------- Clima (Open-Meteo, sem chave) ---------- */
+var CLIMA = null;
+var CODIGOS = { 0: 'Céu limpo', 1: 'Poucas nuvens', 2: 'Parcialmente nublado', 3: 'Nublado', 45: 'Neblina', 48: 'Neblina', 51: 'Garoa', 53: 'Garoa', 55: 'Garoa forte',
+  56: 'Garoa gelada', 57: 'Garoa gelada', 61: 'Chuva fraca', 63: 'Chuva', 65: 'Chuva forte', 66: 'Chuva gelada', 67: 'Chuva gelada', 71: 'Neve', 73: 'Neve', 75: 'Neve',
+  77: 'Granizo fino', 80: 'Pancadas de chuva', 81: 'Pancadas de chuva', 82: 'Temporal', 85: 'Neve', 86: 'Neve', 95: 'Trovoadas', 96: 'Trovoadas com granizo', 99: 'Trovoadas com granizo' };
+function buscarClima() {
+  var u = 'https://api.open-meteo.com/v1/forecast?latitude=' + LAT + '&longitude=' + LON +
+    '&current=temperature_2m,apparent_temperature,weather_code,cloud_cover,precipitation' +
+    '&hourly=temperature_2m,precipitation_probability,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max' +
+    '&timezone=America%2FSao_Paulo&forecast_days=2';
+  return fetch(u).then(function (r) { return r.json(); }).then(function (j) {
+    var agoraIso = new Date(), horas = [];
+    for (var i = 0; i < j.hourly.time.length && horas.length < 5; i++) {
+      var t = new Date(j.hourly.time[i]);
+      if (t > agoraIso && t.getHours() % 3 === 0) horas.push({ h: t.getHours(), temp: Math.round(j.hourly.temperature_2m[i]), chuva: j.hourly.precipitation_probability[i] || 0 });
+    }
+    CLIMA = { agora: Math.round(j.current.temperature_2m), sens: Math.round(j.current.apparent_temperature), cod: j.current.weather_code,
+      nuvens: j.current.cloud_cover, desc: CODIGOS[j.current.weather_code] || '', max: Math.round(j.daily.temperature_2m_max[0]),
+      min: Math.round(j.daily.temperature_2m_min[0]), chuva: j.daily.precipitation_probability_max[0] || 0, horas: horas };
+    renderClima();
+  }).catch(function () {});
+}
+function renderClima() {
+  var c = CLIMA;
+  if (!c && dados && dados.clima) c = { agora: dados.clima.agora, desc: dados.clima.descricao, max: dados.clima.max, min: dados.clima.min, chuva: dados.clima.chuva, horas: [] };
+  if (!c) return;
+  $('qClima').textContent = c.agora + '°  ' + c.desc + (c.chuva >= 40 ? ' · chuva ' + c.chuva + '%' : '');
+  $('pClima').innerHTML = '<b>' + c.agora + '°</b>&nbsp; ' + esc(c.desc) + ' &nbsp;·&nbsp; máx ' + c.max + '° mín ' + c.min + '°' +
+    (c.chuva >= 30 ? ' &nbsp;·&nbsp; chuva ' + c.chuva + '%' : '') + ' &nbsp;·&nbsp; <span id="pLua">' + (LUA ? LUA.nome + ' · ' + LUA.pct + '%' : '') + '</span>' +
+    (c.horas && c.horas.length ? '<div class="p-horas num">' + c.horas.map(function (x) { return '<span>' + dois(x.h) + 'h <b>' + x.temp + '°</b>' + (x.chuva >= 30 ? ' ' + x.chuva + '%' : '') + '</span>'; }).join('') + '</div>' : '');
+  $('nClima').textContent = c.agora + '° · ' + c.desc;
+}
+function fatorCeu() {   // nuvens e chuva apagam estrelas e lua
+  if (!CLIMA) return 1;
+  var cod = CLIMA.cod;
+  if (cod >= 51) return .25;
+  if (cod === 45 || cod === 48) return .3;
+  return 1 - Math.min(.7, (CLIMA.nuvens || 0) / 100 * .75);
+}
+
 var desloc = { x: 0, y: 0 }, ultimoQuadro = 0;
 function animar(t) {
   requestAnimationFrame(animar);
@@ -1171,20 +1387,30 @@ function animar(t) {
   ultimoQuadro = t;
   cx.clearRect(0, 0, W, H);
   brilhoNoite += ((document.body.classList.contains('espiando') ? 1 : 0) - brilhoNoite) * .05;
-  var ganho = .75 + brilhoNoite * .9;
+  var ceu = fatorCeu(), ganho = (.75 + brilhoNoite * .9) * ceu;
   for (var i = 0; i < estrelas.length; i++) {
     var e = estrelas[i], a = e.b * (.5 + .5 * Math.sin(t * e.v + e.f)) * ganho;
     cx.fillStyle = 'rgba(220,226,250,' + a.toFixed(3) + ')';
     cx.beginPath(); cx.arc(e.x + desloc.x * .3, e.y + desloc.y * .3, e.r, 0, 6.2832); cx.fill();
   }
-  if (!cadente && Math.random() < .0003) cadente = { x: Math.random() * W * .6 + W * .1, y: Math.random() * H * .3, vx: 5 + Math.random() * 3, vy: 1.5 + Math.random(), v: 1 };
+  if (ceu > .6 && !cadente && Math.random() < .0003) cadente = { x: Math.random() * W * .6 + W * .1, y: Math.random() * H * .3, vx: 5 + Math.random() * 3, vy: 1.5 + Math.random(), v: 1 };
   if (cadente) {
     var c = cadente, gr = cx.createLinearGradient(c.x, c.y, c.x - c.vx * 14, c.y - c.vy * 14);
     gr.addColorStop(0, 'rgba(232,236,255,' + (.32 * c.v) + ')'); gr.addColorStop(1, 'rgba(232,236,255,0)');
     cx.strokeStyle = gr; cx.lineWidth = 1.1; cx.beginPath(); cx.moveTo(c.x, c.y); cx.lineTo(c.x - c.vx * 14, c.y - c.vy * 14); cx.stroke();
     c.x += c.vx; c.y += c.vy; c.v -= .012; if (c.v <= 0) cadente = null;
   }
-  lua(W * .8 + desloc.x, H * .2 + desloc.y, Math.min(W, H) * .05, faseLua(new Date()), .5 + brilhoNoite * .5);
+  if (!LUA) atualizarLua();
+  if (LUA.visivel) {
+    var p = posTela(), r = Math.min(W, H) * .062;
+    lua(p.x + desloc.x, p.y + desloc.y, r, (.55 + brilhoNoite * .45) * Math.max(.35, ceu));
+    var li = $('luaInfo');
+    li.style.left = Math.max(12, Math.min(W - 260, p.x - 130)) + 'px';
+    li.style.top = Math.min(H - 60, p.y + r * 1.5) + 'px';
+    li.classList.remove('canto');
+  } else {
+    $('luaInfo').classList.add('canto');
+  }
 }
 
 /* =========================================================
@@ -1281,6 +1507,8 @@ function tick() {
     document.documentElement.style.setProperty('--dx', desloc.x + 'px');
     document.documentElement.style.setProperty('--dy', desloc.y + 'px');
     if (estado === 'quadro') trocarObra();
+    atualizarLua();
+    if (d.getMinutes() % 30 === 0) buscarClima();
     if (estado === 'painel' && $('vSemana').classList.contains('on')) renderSemana();
   }
   decidir();
@@ -1319,6 +1547,8 @@ if (window.speechSynthesis) speechSynthesis.onvoiceschanged = function () {};
 try { if (navigator.wakeLock && !temFully()) navigator.wakeLock.request('screen'); } catch (e) {}
 
 tamanho();
+atualizarLua();
+buscarClima();
 if (dados) render();
 tick();
 setInterval(tick, 1000);
