@@ -1050,8 +1050,10 @@ function chamarGemini_(prompt, temperatura) {
   const modelos = [salvo, 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest',
     'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest']
     .filter(function (m, i, l) { return m && l.indexOf(m) === i; });
-  for (let i = 0; i < modelos.length; i++) {
-    const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + modelos[i] + ':generateContent', {
+  for (let i = 0; i < modelos.length * 2; i++) {
+    if (i === modelos.length) Utilities.sleep(5000);   // todos ocupados: espera um pouco e tenta a rodada de novo
+    const mod = modelos[i % modelos.length];
+    const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + mod + ':generateContent', {
       method: 'post', contentType: 'application/json', muteHttpExceptions: true,
       headers: { 'x-goog-api-key': chaveGemini_() },
       payload: JSON.stringify({
@@ -1061,12 +1063,12 @@ function chamarGemini_(prompt, temperatura) {
     });
     const cod = r.getResponseCode();
     if (cod === 200) {
-      if (salvo !== modelos[i]) props.setProperty('GEMINI_MODELO_OK', modelos[i]);
+      if (salvo !== mod) props.setProperty('GEMINI_MODELO_OK', mod);
       try { return JSON.parse(JSON.parse(r.getContentText()).candidates[0].content.parts[0].text); } catch (e) { return null; }
     }
-    console.warn('Gemini ' + modelos[i] + ' falhou: ' + cod + ' ' + r.getContentText().slice(0, 200));
+    console.warn('Gemini ' + mod + ' falhou: ' + cod + ' ' + r.getContentText().slice(0, 200));
     if (cod === 401 || cod === 403) return null;   // chave inválida: não adianta tentar outro
-    if (cod === 404 && modelos[i] === salvo) props.deleteProperty('GEMINI_MODELO_OK');
+    if (cod === 404 && mod === salvo) props.deleteProperty('GEMINI_MODELO_OK');
     // 429/500/503 (muita procura) ou 404: tenta o próximo modelo
   }
   return null;
@@ -1555,15 +1557,19 @@ function montarPlaylistManha(forcar) {
     props.setProperty('PLAYLIST_ID', pid);
   }
   let tok;
-  do {
-    const r = YouTube.PlaylistItems.list('id', { playlistId: pid, maxResults: 50, pageToken: tok });
-    (r.items || []).forEach(function (it) { tentar_(function () { YouTube.PlaylistItems.remove(it.id); }); });
-    tok = r.nextPageToken;
-  } while (tok);
+  try {
+    do {
+      const r = YouTube.PlaylistItems.list('id', { playlistId: pid, maxResults: 50, pageToken: tok });
+      (r.items || []).forEach(function (it) { tentar_(function () { YouTube.PlaylistItems.remove(it.id); }); });
+      tok = r.nextPageToken;
+    } while (tok);
+  } catch (e) { Utilities.sleep(4000); }   // playlist recém-criada ainda não aparece: está vazia mesmo
   const ok = [];
   lista.forEach(function (m) {
     tentar_(function () {
-      YouTube.PlaylistItems.insert({ snippet: { playlistId: pid, resourceId: { kind: 'youtube#video', videoId: m.id } } }, 'snippet');
+      const item = { snippet: { playlistId: pid, resourceId: { kind: 'youtube#video', videoId: m.id } } };
+      try { YouTube.PlaylistItems.insert(item, 'snippet'); }
+      catch (e) { Utilities.sleep(3000); YouTube.PlaylistItems.insert(item, 'snippet'); }
       ok.push(m);
     });
   });
