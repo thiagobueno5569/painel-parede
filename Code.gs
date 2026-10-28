@@ -170,6 +170,7 @@ function api_(acao, p) {
   else if (acao === 'voz') return vozNatural_(p.texto);
   else if (acao === 'refazer') refazerFaculdade();
   else if (acao === 'perguntar') return perguntar_(p.texto);
+  else if (acao === 'diag') return diagGemini_();
   else if (acao === 'adicionar') adicionar_(p.acao);
   return getBriefing();
 }
@@ -192,6 +193,20 @@ function contexto_() {
     clima: b.clima,
     emails: b.emails.lista.map(function (m, i) { return '#' + i + ' de ' + m.de + ' — ' + m.assunto + ' — ' + String(m.texto || '').slice(0, 700); })
   };
+}
+
+/** Diagnóstico: quais modelos a chave enxerga e o que cada um responde */
+function diagGemini_() {
+  const key = chaveGemini_(), out = {};
+  const l = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { muteHttpExceptions: true, headers: { 'x-goog-api-key': key } });
+  out.lista = l.getResponseCode() + ' ' + (l.getResponseCode() === 200 ? JSON.parse(l.getContentText()).models.map(function (m) { return m.name.replace('models/', '') + (m.supportedGenerationMethods.indexOf('generateContent') >= 0 ? '' : '(-)'); }).filter(function (n) { return /flash|pro/.test(n) && !/tts|image|audio|live|embed/.test(n); }).join(',') : l.getContentText().slice(0, 300));
+  out.modeloOk = PropertiesService.getScriptProperties().getProperty('GEMINI_MODELO_OK');
+  ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'].forEach(function (m) {
+    const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { 'x-goog-api-key': key }, payload: JSON.stringify({ contents: [{ parts: [{ text: 'diga ok' }] }] }) });
+    out[m] = r.getResponseCode() + ' ' + r.getContentText().slice(0, 160);
+  });
+  return out;
 }
 
 /** Pergunta livre → { resposta, mostrar, email, acao } */
