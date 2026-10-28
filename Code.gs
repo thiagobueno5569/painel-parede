@@ -789,6 +789,7 @@ function escanearFaculdade() {
     th.getMessages().slice(-3).forEach(function (m) {
       try {
         eventosFaculdade_(m).forEach(function (ev) {
+          horarioDaAula_(ev);
           const t = TIPOS[ev.tipo];
           criarEvento_(ev, m, { cal: cal, tipo: ev.tipo, cor: t.cor, lembretes: t.lembretes, copiarPara: F.COPIAR_PARA });
         });
@@ -827,6 +828,30 @@ function refazerFaculdade() {
   Logger.log('Removi ' + n + ' evento(s) antigos da faculdade. Lendo de novo…');
   escanearFaculdade();
   Logger.log('Pronto. Agora na agenda Faculdade: ' + faculdadeProximos_().map(function (e) { return e.titulo; }).join(' | '));
+}
+
+/** Prova/aula extra sem horário: usa o horário da aula daquela matéria naquele dia da semana */
+function horarioDaAula_(ev) {
+  if (!ev.diaInteiro || !(ev.tipo === 'prova' || ev.tipo === 'reposicao')) return ev;
+  const t = semAcento_(ev.titulo);
+  CONFIG.AULAS.some(function (a) {
+    const bate = semAcento_(a.nome).split(' ').filter(function (w) { return w.length > 4; }).every(function (w) { return t.indexOf(w) >= 0; });
+    if (!bate) return false;
+    const h = a.horarios.filter(function (x) { return x.dia === ev.inicio.getDay(); })[0];
+    if (!h) return false;
+    ev.inicio = new Date(msHora_(ev.inicio, h.ini));
+    ev.fim = new Date(msHora_(ev.inicio, h.fim));
+    ev.diaInteiro = false;
+    if (!ev.local) ev.local = a.local;
+    return true;
+  });
+  return ev;
+}
+
+function gradeTexto_() {
+  return CONFIG.AULAS.map(function (a) {
+    return a.nome + ': ' + a.horarios.map(function (h) { return DIAS[h.dia] + ' ' + h.ini + '–' + h.fim; }).join(', ');
+  }).join('; ');
 }
 
 function tipoDe_(txt) {
@@ -970,7 +995,9 @@ function faculdadeGemini_(m) {
     'Responda com JSON: {"eventos":[{"tipo":"prova|entrega|sem_aula|reposicao","disciplina":"nome curto da matéria ou vazio",' +
     '"descricao":"o que é, bem curto","inicio":"YYYY-MM-DDTHH:MM ou YYYY-MM-DD se não houver horário",' +
     '"fim":"YYYY-MM-DDTHH:MM ou vazio","local":"sala/link ou vazio"}]}. ' +
-    'Para entregas, "inicio" é o prazo final. Se não houver nada importante, responda {"eventos":[]}.\n\n' +
+    'Para entregas, "inicio" é o prazo final. Horário das aulas do aluno: ' + gradeTexto_() + '. ' +
+    'Se a prova ou aula for "no horário da aula", use o horário da matéria naquele dia. Se várias datas forem só propostas ou opções, use a data confirmada. ' +
+    'Se não houver nada importante, responda {"eventos":[]}.\n\n' +
     'De: ' + o.de + '\nData do e-mail: ' + o.data + '\nAssunto: ' + o.assunto + '\n\n' +
     o.corpo.slice(0, 7000)
   );
